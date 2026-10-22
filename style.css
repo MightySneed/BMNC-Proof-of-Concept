@@ -1,0 +1,140 @@
+:root {
+  --bg: #121214;
+  --card-bg: #1e1e24;
+  --border: #33333d;
+  --accent: #e9c46a;
+  --text: #e0e0e0;
+  --untouched: #2a2a35;
+  --grazed: #70581e;
+  --injured: #a8421e;
+  --destroyed: #8b0000;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 20px;
+}
+
+#app {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+h1, h2, h3, h4 {
+  margin-top: 0;
+  color: var(--accent);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 16px;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.btn {
+  background: #2e2e38;
+  color: var(--text);
+  border: 1px solid var(--accent);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn:hover {
+  background: var(--accent);
+  color: #000;
+}
+
+.btn-danger {
+  border-color: #e76f51;
+  background: #3d1e1e;
+}
+
+.btn-danger:hover {
+  background: #e76f51;
+  color: #fff;
+}
+
+.log {
+  background: #0a0a0c;
+  border: 1px solid var(--border);
+  height: 380px;
+  overflow-y: auto;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 0.85em;
+}
+
+.log-entry { margin-bottom: 4px; }
+.log-round { color: var(--accent); font-weight: bold; }
+.log-damage { color: #e76f51; }
+.log-check { color: #2a9d8f; }
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+}
+
+/* --- PAPER DOLL CONTAINER --- */
+.paper-doll {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  grid-template-rows: auto auto auto auto;
+  grid-template-areas:
+    "aura head ."
+    "larm torso rarm"
+    "lleg torso rleg"
+    ". . .";
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px;
+  background: #141418;
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+}
+
+.doll-slot {
+  background: var(--untouched);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  text-align: center;
+  font-size: 0.78em;
+  transition: all 0.2s ease;
+}
+
+.doll-slot-head  { grid-area: head; }
+.doll-slot-aura  { grid-area: aura; }
+.doll-slot-torso { grid-area: torso; }
+.doll-slot-larm  { grid-area: larm; }
+.doll-slot-rarm  { grid-area: rarm; }
+.doll-slot-lleg  { grid-area: lleg; }
+.doll-slot-rleg  { grid-area: rleg; }
+
+.doll-slot.loc-untouched { background: var(--untouched); border-color: #444; }
+.doll-slot.loc-grazed    { background: var(--grazed); border-color: #d4a373; }
+.doll-slot.loc-injured   { background: var(--injured); border-color: #f4a261; }
+.doll-slot.loc-destroyed { background: var(--destroyed); border-color: #ff0000; box-shadow: 0 0 6px #ff0000; }
+
+.doll-slot .loc-name { font-weight: bold; color: #fff; }
+.doll-slot .loc-armor { color: var(--accent); font-size: 0.85em; }
+.doll-slot .loc-status { font-weight: bold; text-transform: uppercase; margin-top: 2px; }
