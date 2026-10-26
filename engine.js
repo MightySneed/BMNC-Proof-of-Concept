@@ -171,32 +171,31 @@ function autoDistributePegs(id, key, totalVal, validLocs) {
         input.value = String(value - remove);
         excess -= remove;
       }
-    } else if (total < totalVal) {
-      let remaining = totalVal - total;
-      let index = 0;
-      while (remaining > 0 && validLocs.length > 0) {
-        const input = document.getElementById(`f${id}-peg-${key}-${validLocs[index % validLocs.length]}`);
-        if (input) input.value = String((parseInt(input.value) || 0) + 1);
-        remaining--;
-        index++;
-      }
+    } else if (total < totalVal && validLocs.length > 0) {
+      const remaining = totalVal - total;
+      const each = Math.floor(remaining / validLocs.length);
+      const remainder = remaining % validLocs.length;
+      validLocs.forEach((locId, index) => {
+        const input = document.getElementById(`f${id}-peg-${key}-${locId}`);
+        if (input) input.value = String((parseInt(input.value) || 0) + each + (index < remainder ? 1 : 0));
+      });
     }
     return;
   }
 
-  // Initial default: distribute points round-robin across valid locations.
-  let remaining = totalVal;
-  let idx = 0;
+  // Initial default: distribute points round-robin across valid locations
+  // without a loop proportional to the chosen stat value.
   const distribution = {};
-  validLocs.forEach(locId => distribution[locId] = 0);
-  while (remaining > 0 && validLocs.length > 0) {
-    distribution[validLocs[idx % validLocs.length]]++;
-    remaining--;
-    idx++;
+  if (validLocs.length > 0) {
+    const each = Math.floor(totalVal / validLocs.length);
+    const remainder = totalVal % validLocs.length;
+    validLocs.forEach((locId, index) => {
+      distribution[locId] = each + (index < remainder ? 1 : 0);
+    });
   }
   validLocs.forEach(locId => {
     const input = document.getElementById(`f${id}-peg-${key}-${locId}`);
-    if (input) input.value = String(distribution[locId]);
+    if (input) input.value = String(distribution[locId] || 0);
   });
 }
 
