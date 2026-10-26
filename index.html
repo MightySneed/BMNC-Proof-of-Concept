@@ -141,14 +141,14 @@
       </div>
     </div>
     <br>
-    <button class="btn btn-danger" style="padding: 10px 20px;" onclick="startBattle()">Start Battle</button>
+    <button class="btn btn-danger" style="padding: 10px 20px;" id="startBattleButton" onclick="startBattle()">Start Battle</button>
   </div>
 
   <!-- BATTLE SCREEN -->
   <div id="battleScreen" style="display:none;">
     <h1>⚔️ Battle Field</h1>
-    <div style="margin-bottom:12px; display:flex; justify-content:space-between;">
-      <div id="turnBanner" style="color:#e9c46a; font-weight:bold; font-size:1.1em;"></div>
+    <div class="battle-topbar">
+      <div id="turnBanner" class="turn-banner" aria-live="polite">Encounter ready</div>
       <div class="battle-controls">
         <button class="btn" id="resetCombatButton" onclick="restartMatch()">↻ Rematch / Reset</button>
         <button class="btn btn-danger" id="endActivationButton" onclick="nextTurn()">Pass remaining actions →</button>
