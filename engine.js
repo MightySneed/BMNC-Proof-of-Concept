@@ -530,7 +530,7 @@ function startTurn(char) {
       char.isUnconscious = true;
       char.actions.base = 0;
       char.actions.quick = 0;
-    char.actions.bonusQuick = 0;
+      char.actions.bonusQuick = 0;
       log(`💤 Check failed: ${char.name} falls unconscious.`, "log-damage");
       if (!checkEncounterComplete()) advanceToNextActor();
       else updateUI();
@@ -559,7 +559,7 @@ function advanceToNextActor() {
     if (!isCombatCapable(char)) {
       char.actions.base = 0;
       char.actions.quick = 0;
-    char.actions.bonusQuick = 0;
+      char.actions.bonusQuick = 0;
       continue;
     }
     if (hasRemainingActions(char)) {
@@ -590,7 +590,7 @@ function nextTurn() {
   if (!char || combatEnded) return;
   char.actions.base = 0;
   char.actions.quick = 0;
-    char.actions.bonusQuick = 0;
+  char.actions.bonusQuick = 0;
   log(`⏭️ ${char.name} passes and forfeits remaining actions.`);
   advanceToNextActor();
 }
