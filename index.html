@@ -10,12 +10,24 @@
 <div id="app">
   <!-- SETUP SCREEN -->
   <div id="setupScreen">
-    <h1>⚔️ Tactical RPG - Point-Buy Creator</h1>
+    <h1>⚔️ Tactical RPG — Point-Buy Creator</h1>
+    <p class="intro-copy">Load a starter character and weapon, then edit any value. These presets are local data, not fixed templates.</p>
+    <p id="presetStatus" class="preset-status" aria-live="polite">Starter presets are ready to load.</p>
     <div class="grid-2">
       <!-- Fighter 1 Setup -->
       <div class="card">
         <h3>Fighter 1 Configuration <span id="f1-xp" style="font-size:0.8em; color:#e9c46a; float:right;">XP: 0</span></h3>
-        Name: <input type="text" id="f1-name" value="Guts" style="width:120px;"><br><br>
+        <div class="preset-control">
+          <label for="f1-character-preset">Character preset</label>
+          <select id="f1-character-preset">
+            <option value="guts" selected>Guts — Heavy Mercenary</option>
+            <option value="duelist">Agile Duelist</option>
+            <option value="goblin">Goblin Bruiser</option>
+            <option value="guard">Balanced Guard</option>
+          </select>
+          <button class="btn btn-small" onclick="loadCharacterPreset(1)">Load character</button>
+        </div>
+        <label class="name-field" for="f1-name">Name <input type="text" id="f1-name" value="Guts"></label>
         
         <h4>Primary Stats</h4>
         <div class="stat-row">Body Level: <input type="number" id="f1-p-body" value="2" min="0" onchange="buildCreatorUI()"></div>
@@ -39,7 +51,18 @@
         <div id="f1-pegging-container"></div>
 
         <h4>Equipped Weapon</h4>
-        <div style="font-size:0.85em; display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:8px;">
+        <div class="preset-control">
+          <label for="f1-weapon-preset">Weapon preset</label>
+          <select id="f1-weapon-preset">
+            <option value="greatsword" selected>Greatsword</option>
+            <option value="sabre">Sabre</option>
+            <option value="unarmed">Unarmed</option>
+            <option value="scrapClub">Scrap Club</option>
+            <option value="spear">Spear</option>
+          </select>
+          <button class="btn btn-small" onclick="loadWeaponPreset(1)">Load weapon</button>
+        </div>
+        <div class="weapon-fields">
           <div>Name: <input type="text" id="f1-w-name" value="Greatsword" style="width:90px;"></div>
           <div>Dice Sides (dX): <input type="number" id="f1-w-dice" value="8" style="width:40px;"></div>
           <div>Scaling: 
@@ -52,12 +75,24 @@
           <div>Flat Dmg: <input type="number" id="f1-w-flat" value="2" style="width:40px;"></div>
           <div>Armor Pen (AP): <input type="number" id="f1-w-ap" value="3" style="width:40px;"></div>
         </div>
+        </div>
+        </div>
       </div>
 
       <!-- Fighter 2 Setup -->
       <div class="card">
         <h3>Fighter 2 Configuration <span id="f2-xp" style="font-size:0.8em; color:#e9c46a; float:right;">XP: 0</span></h3>
-        Name: <input type="text" id="f2-name" value="Griffith" style="width:120px;"><br><br>
+        <div class="preset-control">
+          <label for="f2-character-preset">Character preset</label>
+          <select id="f2-character-preset">
+            <option value="guts">Guts — Heavy Mercenary</option>
+            <option value="duelist" selected>Agile Duelist</option>
+            <option value="goblin">Goblin Bruiser</option>
+            <option value="guard">Balanced Guard</option>
+          </select>
+          <button class="btn btn-small" onclick="loadCharacterPreset(2)">Load character</button>
+        </div>
+        <label class="name-field" for="f2-name">Name <input type="text" id="f2-name" value="Agile Duelist"></label>
 
         <h4>Primary Stats</h4>
         <div class="stat-row">Body Level: <input type="number" id="f2-p-body" value="0" min="0" onchange="buildCreatorUI()"></div>
@@ -81,7 +116,18 @@
         <div id="f2-pegging-container"></div>
 
         <h4>Equipped Weapon</h4>
-        <div style="font-size:0.85em; display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:8px;">
+        <div class="preset-control">
+          <label for="f2-weapon-preset">Weapon preset</label>
+          <select id="f2-weapon-preset">
+            <option value="greatsword">Greatsword</option>
+            <option value="sabre" selected>Sabre</option>
+            <option value="unarmed">Unarmed</option>
+            <option value="scrapClub">Scrap Club</option>
+            <option value="spear">Spear</option>
+          </select>
+          <button class="btn btn-small" onclick="loadWeaponPreset(2)">Load weapon</button>
+        </div>
+        <div class="weapon-fields">
           <div>Name: <input type="text" id="f2-w-name" value="Sabre" style="width:90px;"></div>
           <div>Dice Sides (dX): <input type="number" id="f2-w-dice" value="6" style="width:40px;"></div>
           <div>Scaling: 
@@ -105,12 +151,14 @@
     <h1>⚔️ Battle Field</h1>
     <div style="margin-bottom:12px; display:flex; justify-content:space-between;">
       <div id="turnBanner" style="color:#e9c46a; font-weight:bold; font-size:1.1em;"></div>
-      <div>
-        <button class="btn" onclick="restartMatch()">🔄 Rematch / Reset Combat</button>
-        <button class="btn btn-danger" onclick="nextTurn()">⏭️ End Turn</button>
-        <button class="btn" onclick="location.reload()">⚙️ Reconfigure Stats</button>
+      <div class="battle-controls">
+        <button class="btn" id="resetCombatButton" onclick="restartMatch()">↻ Rematch / Reset</button>
+        <button class="btn btn-danger" id="endActivationButton" onclick="nextTurn()">Pass remaining actions →</button>
+        <button class="btn" onclick="location.reload()">⚙️ Reconfigure</button>
       </div>
     </div>
+
+    <div id="initiativeTracker" class="initiative-tracker" aria-live="polite"></div>
 
     <div class="grid-3">
       <div id="f1-card" class="card"></div>
@@ -123,6 +171,7 @@
   </div>
 </div>
 
+<script src="data/presets.js"></script>
 <script src="engine.js"></script>
 </body>
 </html>
