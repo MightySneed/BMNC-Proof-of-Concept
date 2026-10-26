@@ -9,8 +9,9 @@ class Weapon {
 }
 
 class Fighter {
-  constructor(name, primaries, substats, weapon, armorMap, pegAllocations) {
+  constructor(name, primaries, substats, weapon, armorMap, pegAllocations, team = "A") {
     this.name = name;
+    this.team = team;
     this.primaries = primaries; 
     this.substats = substats;   
     this.equippedWeapon = weapon;
@@ -25,6 +26,13 @@ class Fighter {
       6: { name: "Right Leg", state: "untouched", armor: armorMap[6] || 0, isVital: false, pegs: pegAllocations[6] || {} },
       7: { name: "Aura/System", state: "untouched", armor: 0, isVital: false, pegs: pegAllocations[7] || {} }
     };
+
+    // Wound counts are tracked separately from location state. Repeated injuries
+    // count toward trauma, but do not multiply the stat penalty for a disabled limb.
+    Object.values(this.bodyPlan).forEach(loc => {
+      loc.grazeCount = 0;
+      loc.injuryCount = 0;
+    });
 
     // 2. Initialize actions and combat state SECOND
     this.actions = { base: 1, quick: this.getEffectiveStat('quickActions') };
@@ -56,11 +64,15 @@ class Fighter {
     let activeLegs = 0;
     if (this.bodyPlan[5].state !== "injured" && this.bodyPlan[5].state !== "destroyed") activeLegs++;
     if (this.bodyPlan[6].state !== "injured" && this.bodyPlan[6].state !== "destroyed") activeLegs++;
-    return activeLegs * 3;
+    return activeLegs * 5; // feet; 5 ft per functional leg
   }
 
-  get totalGrazes() { return Object.values(this.bodyPlan).filter(l => l.state === "grazed").length; }
-  get totalInjuries() { return Object.values(this.bodyPlan).filter(l => l.state === "injured" || l.state === "destroyed").length; }
+  get totalGrazes() {
+    return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.grazeCount, 0);
+  }
+  get totalInjuries() {
+    return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.injuryCount, 0);
+  }
   get totalWoundsSum() { return this.totalGrazes + this.totalInjuries; }
 
   resetTurnActions() {
@@ -72,7 +84,11 @@ class Fighter {
     this.isDead = false;
     this.isUnconscious = false;
     this.statuses.brokenDefense = false;
-    Object.values(this.bodyPlan).forEach(loc => loc.state = "untouched");
+    Object.values(this.bodyPlan).forEach(loc => {
+      loc.state = "untouched";
+      loc.grazeCount = 0;
+      loc.injuryCount = 0;
+    });
     this.resetTurnActions();
   }
 }
@@ -230,27 +246,42 @@ function renderPeggingTable(id) {
   });
 }
 
-function buildCreatorUI() {
-  [1, 2].forEach(id => {
-    const bodyCap = parseInt(document.getElementById(`f${id}-p-body`).value) || 0;
-    const nerveCap = parseInt(document.getElementById(`f${id}-p-nerve`).value) || 0;
-    const charCap = parseInt(document.getElementById(`f${id}-p-char`).value) || 0;
+function buildCreatorUI(preserveExisting = true) {
+  // Primary-stat edits rebuild the generated controls. Keep the user's current
+  // allocations instead of silently resetting both characters.
+  const savedStats = {};
+  if (preserveExisting) {
+    [1, 2].forEach(id => {
+      savedStats[id] = {};
+      subStatDefs.forEach(stat => {
+        const el = document.getElementById(`f${id}-s-${stat.key}`);
+        if (el) savedStats[id][stat.key] = parseInt(el.value) || 0;
+      });
+    });
+  }
 
+  [1, 2].forEach(id => {
+    const bodyCap = Math.max(0, parseInt(document.getElementById(`f${id}-p-body`)?.value) || 0);
+    const nerveCap = Math.max(0, parseInt(document.getElementById(`f${id}-p-nerve`)?.value) || 0);
+    const charCap = Math.max(0, parseInt(document.getElementById(`f${id}-p-char`)?.value) || 0);
     const caps = { body: bodyCap, nerve: nerveCap, character: charCap };
     const container = document.getElementById(`f${id}-substats`);
     if (!container) return;
     container.innerHTML = "";
 
-    subStatDefs.forEach(s => {
-      let maxLevel = caps[s.parent];
-      if (s.isWoundCap) maxLevel = Math.floor(bodyCap / 2);
+    subStatDefs.forEach(stat => {
+      let maxLevel = caps[stat.parent];
+      if (stat.isWoundCap) maxLevel = Math.floor(bodyCap / 2);
+      const previous = savedStats[id]?.[stat.key];
+      const initial = previous === undefined ? (stat.key === "dexterity" ? 1 : 0) : previous;
+      const value = Math.min(Math.max(0, initial), maxLevel);
 
-      container.innerHTML += `
+      container.insertAdjacentHTML("beforeend", `
         <div class="stat-row">
-          <span>${s.label} ${s.isDoubleCost ? "⚡(2x XP)" : ""} (Max ${maxLevel}):</span>
-          <input type="number" id="f${id}-s-${s.key}" value="${s.key === 'dexterity' ? 1 : 0}" min="0" max="${maxLevel}" onchange="calculateTotalXP(${id})">
+          <label for="f${id}-s-${stat.key}">${stat.label} ${stat.isDoubleCost ? "⚡ (2× XP)" : ""} <span class="stat-cap">(max ${maxLevel})</span></label>
+          <input type="number" id="f${id}-s-${stat.key}" value="${value}" min="0" max="${maxLevel}" step="1" onchange="calculateTotalXP(${id})">
         </div>
-      `;
+      `);
     });
 
     calculateTotalXP(id);
@@ -315,94 +346,184 @@ function startBattle() {
   }
 }
 
+function isCombatCapable(char) {
+  return !!char && !char.isDead && !char.isUnconscious;
+}
+
+function hasRemainingActions(char) {
+  return isCombatCapable(char) && (char.actions.base > 0 || char.actions.quick > 0);
+}
+
+function checkEncounterComplete() {
+  const teams = [...new Set(combatQueue.map(char => char.team))];
+  const activeTeams = teams.filter(team =>
+    combatQueue.some(char => char.team === team && isCombatCapable(char))
+  );
+
+  // Team-aware so that a future multi-character side can still intervene when
+  // one member is unconscious. In this two-fighter prototype, each side has one fighter.
+  if (activeTeams.length <= 1 && teams.length > 1) {
+    combatEnded = true;
+    const winner = activeTeams.length === 1
+      ? combatQueue.find(char => char.team === activeTeams[0] && isCombatCapable(char))
+      : null;
+    log(winner
+      ? `🏆 ${winner.name} wins! The opposing side has no combat-capable fighters.`
+      : "⚔️ The encounter has ended with no combat-capable fighters remaining.",
+      "log-round");
+    return true;
+  }
+  return false;
+}
+
 function restartMatch() {
+  combatEnded = false;
   f1.resetFullState();
   f2.resetFullState();
-
   document.getElementById("combatLog").innerHTML = "";
 
-  combatQueue = [f1, f2].sort((a, b) => b.getEffectiveStat('initiative') - a.getEffectiveStat('initiative'));
-  activeIndex = 0;
+  combatQueue = [f1, f2].sort((a, b) =>
+    b.getEffectiveStat("initiative") - a.getEffectiveStat("initiative")
+  );
   currentRound = 1;
+  activeIndex = combatQueue.length - 1;
+  combatQueue.forEach(char => char.resetTurnActions());
 
-  log(`========================================`, "log-round");
-  log(`--- ROUND 1 START ---`, "log-round");
-  log(`Turn Order: ${combatQueue[0].name} (Init +${combatQueue[0].getEffectiveStat('initiative')}) -> ${combatQueue[1].name} (Init +${combatQueue[1].getEffectiveStat('initiative')})`, "log-round");
+  log("========================================", "log-round");
+  log("--- ROUND 1 START ---", "log-round");
+  log(`Initiative: ${combatQueue.map(char =>
+    `${char.name} (+${char.getEffectiveStat("initiative")})`
+  ).join(" → ")}`, "log-round");
 
-  startTurn(combatQueue[0]);
+  advanceToNextActor();
 }
 
 function startTurn(char) {
-  char.resetTurnActions();
-
-  if (char.isDead || char.isUnconscious) {
-    log(`⏭️ ${char.name} is incapacitated and skips their turn.`);
+  if (combatEnded || !char) {
     updateUI();
     return;
   }
 
-  log(`\n▶️ ${char.name}'s Activation Start.`);
+  if (!isCombatCapable(char)) {
+    char.actions.base = 0;
+    char.actions.quick = 0;
+    advanceToNextActor();
+    return;
+  }
 
-  let vitalDestroyed = false;
-  Object.values(char.bodyPlan).forEach(loc => {
-    if (loc.isVital && loc.state === "destroyed") vitalDestroyed = true;
-  });
+  // Gumption is checked when the character's activation comes up, before an
+  // action is chosen. This deliberately leaves room for allies to intervene
+  // between activations in the future multi-character encounter mode.
+  log(`\n▶️ ${char.name}'s activation begins.`);
 
+  const vitalDestroyed = Object.values(char.bodyPlan).some(
+    loc => loc.isVital && loc.state === "destroyed"
+  );
   if (vitalDestroyed) {
     char.isDead = true;
-    log(`☠️ FATAL INJURY RESOLVED! ${char.name} suffered a destroyed vital location and succumbs at turn start!`, "log-damage");
-    updateUI();
+    char.actions.base = 0;
+    char.actions.quick = 0;
+    log(`☠️ ${char.name} has suffered a destroyed vital location and dies.`, "log-damage");
+    if (!checkEncounterComplete()) advanceToNextActor();
+    else updateUI();
     return;
   }
 
   const injuries = char.totalInjuries;
   const woundsSum = char.totalWoundsSum;
-  const effectiveGumption = char.getEffectiveStat('gumption');
+  const effectiveGumption = char.getEffectiveStat("gumption");
 
   if (injuries > char.currentWoundCap) {
     char.isUnconscious = true;
-    log(`💤 ${char.name} has ${injuries} Injuries (Exceeds Wound Cap of ${char.currentWoundCap}) and passes out!`, "log-damage");
-  } else if (injuries >= char.currentWoundCap) {
+    char.actions.base = 0;
+    char.actions.quick = 0;
+    log(`💤 ${char.name} has ${injuries} injuries, exceeding Wound Cap ${char.currentWoundCap}; they collapse.`, "log-damage");
+    if (!checkEncounterComplete()) advanceToNextActor();
+    else updateUI();
+    return;
+  }
+
+  if (injuries >= char.currentWoundCap) {
     const roll = d20();
     const total = roll + effectiveGumption - woundsSum;
-    log(`🧠 Gumption Check: d20(${roll}) + Gump(${effectiveGumption}) - Wounds(${woundsSum}) = ${total} (Needs > 10)`, "log-check");
-
+    log(`🧠 Gumption check: d20(${roll}) + Gump(${effectiveGumption}) − Wounds(${woundsSum}) = ${total} (needs > 10)`, "log-check");
     if (total <= 10) {
       char.isUnconscious = true;
-      log(`💤 CHECK FAILED! ${char.name} falls UNCONSCIOUS!`, "log-damage");
-    } else {
-      log(`✨ CHECK PASSED! ${char.name} stays on their feet!`);
+      char.actions.base = 0;
+      char.actions.quick = 0;
+      log(`💤 Check failed: ${char.name} falls unconscious.`, "log-damage");
+      if (!checkEncounterComplete()) advanceToNextActor();
+      else updateUI();
+      return;
     }
+    log(`✨ ${char.name} remains conscious and can act.`);
   }
 
   updateUI();
 }
 
-function nextTurn() {
-  activeIndex++;
-  if (activeIndex >= combatQueue.length) {
-    activeIndex = 0;
-    currentRound++;
-    log(`\n========================================`, "log-round");
-    log(`--- ROUND ${currentRound} START ---`, "log-round");
-    log(`========================================`, "log-round");
+function advanceToNextActor() {
+  if (combatEnded) {
+    updateUI();
+    return;
   }
-  startTurn(combatQueue[activeIndex]);
+  if (checkEncounterComplete()) {
+    updateUI();
+    return;
+  }
+
+  const count = combatQueue.length;
+  for (let offset = 1; offset <= count; offset++) {
+    const idx = (activeIndex + offset) % count;
+    const char = combatQueue[idx];
+    if (!isCombatCapable(char)) {
+      char.actions.base = 0;
+      char.actions.quick = 0;
+      continue;
+    }
+    if (hasRemainingActions(char)) {
+      activeIndex = idx;
+      startTurn(char);
+      return;
+    }
+  }
+
+  // Everyone has spent their action pool. Start a new round and begin again
+  // at the top of the fixed initiative order.
+  currentRound++;
+  combatQueue.forEach(char => char.resetTurnActions());
+  activeIndex = count - 1;
+  log("========================================", "log-round");
+  log(`--- ROUND ${currentRound} START ---`, "log-round");
+  advanceToNextActor();
+}
+
+function nextTurn() {
+  // "End Turn" now means voluntarily forfeit remaining actions and pass the
+  // interleaved queue to the next combatant.
+  const char = combatQueue[activeIndex];
+  if (!char || combatEnded) return;
+  char.actions.base = 0;
+  char.actions.quick = 0;
+  log(`⏭️ ${char.name} passes and forfeits remaining actions.`);
+  advanceToNextActor();
 }
 
 function convertAction(fromType, toType) {
   const char = combatQueue[activeIndex];
+  if (!char || combatEnded || !isCombatCapable(char)) return;
+
   if (fromType === "base" && toType === "quick") {
     if (char.actions.base >= 1) {
       char.actions.base -= 1;
       char.actions.quick += 2;
-      log(`⚡ ${char.name} converted 1 Base Action into 2 Quick Actions.`);
+      log(`⚡ ${char.name} converts 1 Base Action into 2 Quick Actions.`);
     }
   } else if (fromType === "quick" && toType === "base") {
     if (char.actions.quick >= 2) {
       char.actions.quick -= 2;
       char.actions.base += 1;
-      log(`⚡ ${char.name} converted 2 Quick Actions into 1 Base Action.`);
+      log(`⚡ ${char.name} converts 2 Quick Actions into 1 Base Action.`);
     }
   }
   updateUI();
@@ -411,181 +532,268 @@ function convertAction(fromType, toType) {
 function executeBreak() {
   const attacker = combatQueue[activeIndex];
   const defender = attacker === f1 ? f2 : f1;
-
+  if (!attacker || combatEnded || !isCombatCapable(attacker)) return;
+  if (!isCombatCapable(defender)) {
+    log("⚠️ There is no combat-capable target for Break Stance.");
+    return;
+  }
   if (attacker.actions.base <= 0) {
-    log(`⚠️ No base action remaining for Break!`);
+    log("⚠️ No Base Action remaining for Break Stance.");
     return;
   }
   attacker.actions.base--;
 
   const targetWounds = defender.totalWoundsSum;
-  const attRoll = d20() + attacker.getEffectiveStat('strength') + targetWounds;
-  const defRoll = d20() + defender.getEffectiveStat('gumption');
-
-  log(`🛡️ ${attacker.name} attempts a BREAK on ${defender.name}...`);
+  const attRoll = d20() + attacker.getEffectiveStat("strength") + targetWounds;
+  const defRoll = d20() + defender.getEffectiveStat("gumption");
+  log(`🛡️ ${attacker.name} attempts to break ${defender.name}'s stance...`);
   if (attRoll > defRoll) {
     defender.statuses.brokenDefense = true;
-    log(`💥 SUCCESS! ${defender.name}'s defense is broken (+1 damage tier)!`, "log-damage");
+    log(`💥 Success! ${defender.name}'s defence is broken; the next damaging hit gains +1 tier.`, "log-damage");
   } else {
-    log(`❌ FAILED! ${defender.name} holds ground.`);
+    log(`❌ Failed: ${defender.name} holds their ground.`);
   }
-  updateUI();
+  advanceToNextActor();
+}
+
+function applyLocationHit(location, tier) {
+  if (tier === "grazed") {
+    location.grazeCount++;
+    if (location.state === "untouched") location.state = "grazed";
+    return;
+  }
+
+  // Injury count stacks even on an already-disabled location. The state/penalty
+  // does not stack: a broken arm is already non-functional. A hit whose own
+  // damage meets the destruction threshold can still destroy the location.
+  location.injuryCount++;
+  if (tier === "destroyed") {
+    location.state = "destroyed";
+  } else if (location.state !== "destroyed") {
+    location.state = "injured";
+  }
 }
 
 function executeAttack(isQuick = false) {
   const attacker = combatQueue[activeIndex];
   const defender = attacker === f1 ? f2 : f1;
 
-  if (attacker.isUnconscious || attacker.isDead) return;
+  if (!attacker || combatEnded || !isCombatCapable(attacker)) return;
+  if (!isCombatCapable(defender)) {
+    log("⚠️ The target is no longer combat-capable.");
+    return;
+  }
 
   const actionType = isQuick ? "quick" : "base";
   if (attacker.actions[actionType] <= 0) {
-    log(`⚠️ No ${actionType} actions left!`);
+    log(`⚠️ No ${actionType} actions remaining.`);
     return;
   }
   attacker.actions[actionType]--;
 
-  log(`💥 ${attacker.name} strikes ${defender.name} with [${attacker.equippedWeapon.name}] (${actionType.toUpperCase()})...`);
+  log(`💥 ${attacker.name} attacks ${defender.name} with [${attacker.equippedWeapon.name}] (${actionType.toUpperCase()})...`);
 
+  // Quick attacks deliberately trade accuracy for speed, not damage.
   const roll = isQuick ? d10() : d20();
-  const hitBonus = attacker.getEffectiveStat('dexterity');
+  const hitBonus = attacker.getEffectiveStat("dexterity");
   const totalHit = roll + hitBonus;
-  const isNat20 = (!isQuick && roll === 20);
+  const isNat20 = !isQuick && roll === 20;
 
   if (!isNat20 && totalHit < defender.baseHitClass) {
-    log(`❌ Miss! Roll ${roll} [${isQuick ? 'd10' : 'd20'}] (+${hitBonus} Dex) = ${totalHit} vs HC ${defender.baseHitClass}`);
-    updateUI();
+    log(`❌ Miss: ${roll} [${isQuick ? "d10" : "d20"}] + ${hitBonus} Dex = ${totalHit} vs HC ${defender.baseHitClass}.`);
+    advanceToNextActor();
     return;
   }
 
+  // Physical attacks target only the six physical locations. Aura/System is
+  // reserved for non-physical targeting rules/modules.
   const locRoll = d6();
   const location = defender.bodyPlan[locRoll];
-
   let scalingVal = 0;
-  if (attacker.equippedWeapon.scaling === 'strength') scalingVal = attacker.getEffectiveStat('strength');
-  if (attacker.equippedWeapon.scaling === 'finesse') scalingVal = attacker.getEffectiveStat('finesse');
+  if (attacker.equippedWeapon.scaling === "strength") scalingVal = attacker.getEffectiveStat("strength");
+  if (attacker.equippedWeapon.scaling === "finesse") scalingVal = attacker.getEffectiveStat("finesse");
 
-  const rawDamage = Math.floor(Math.random() * attacker.equippedWeapon.diceSides) + 1 + scalingVal + attacker.equippedWeapon.flatDmg;
+  const rawDamage =
+    Math.floor(Math.random() * attacker.equippedWeapon.diceSides) + 1 +
+    scalingVal + attacker.equippedWeapon.flatDmg;
   const effectiveArmor = Math.max(0, location.armor - attacker.equippedWeapon.ap);
   const damageAfterArmor = rawDamage - effectiveArmor;
 
-  log(`🎯 HIT on ${location.name}! Roll ${roll} [${isQuick ? 'd10' : 'd20'}]. Raw Dmg: ${rawDamage} (Armor: ${location.armor} - AP: ${attacker.equippedWeapon.ap} = Eff. Armor ${effectiveArmor})`);
+  log(`🎯 Hit on ${location.name} (d6=${locRoll}). Raw damage: ${rawDamage}; armour ${location.armor} − AP ${attacker.equippedWeapon.ap} = ${effectiveArmor} effective armour.`);
 
   if (damageAfterArmor <= 0) {
-    log(`🛡️ Armor absorbed the entire hit!`);
+    log("🛡️ Armour absorbs the entire hit.");
   } else {
     let newTier = "grazed";
-    if (damageAfterArmor >= (defender.baseToughness * 2)) {
-      newTier = "destroyed";
-    } else if (damageAfterArmor >= defender.baseToughness) {
-      newTier = "injured";
-    }
+    if (damageAfterArmor >= defender.baseToughness * 2) newTier = "destroyed";
+    else if (damageAfterArmor >= defender.baseToughness) newTier = "injured";
 
     let upgradeSteps = 0;
-    if (defender.statuses.brokenDefense) { upgradeSteps++; defender.statuses.brokenDefense = false; }
-    if (isNat20) { upgradeSteps++; }
+    if (defender.statuses.brokenDefense) {
+      upgradeSteps++;
+      defender.statuses.brokenDefense = false;
+    }
+    if (isNat20) upgradeSteps++;
 
     if (upgradeSteps > 0) {
       const tiers = ["grazed", "injured", "destroyed"];
-      let idx = tiers.indexOf(newTier);
-      idx = Math.min(tiers.length - 1, idx + upgradeSteps);
-      newTier = tiers[idx];
-      log(`⚡ STACKED CRITICAL/BREAK upgrade applied (+${upgradeSteps} tiers)!`);
+      const idx = tiers.indexOf(newTier);
+      newTier = tiers[Math.min(tiers.length - 1, idx + upgradeSteps)];
+      log(`⚡ Critical/broken-defence effect increases this hit by ${upgradeSteps} tier(s).`);
     }
 
-    const tierSeverity = { "untouched": 0, "grazed": 1, "injured": 2, "destroyed": 3 };
-    const currentSeverity = tierSeverity[location.state] || 0;
-    const incomingSeverity = tierSeverity[newTier];
+    applyLocationHit(location, newTier);
+    log(`🩸 Result: ${location.name} receives a ${newTier.toUpperCase()} hit. Location state: ${location.state.toUpperCase()} (graze count ${location.grazeCount}, injury count ${location.injuryCount}).`, "log-damage");
 
-    if (incomingSeverity > currentSeverity) {
-      location.state = newTier;
-      log(`🩸 Result: ${location.name} is now [${newTier.toUpperCase()}]`, "log-damage");
-    } else {
-      log(`🩸 Result: ${location.name} takes a [${newTier.toUpperCase()}] hit, but remains [${location.state.toUpperCase()}]`, "log-damage");
+    if (location.isVital && location.state === "destroyed") {
+      defender.isDead = true;
+      defender.actions.base = 0;
+      defender.actions.quick = 0;
+      log(`☠️ Fatal injury: ${defender.name}'s vital location is destroyed.`, "log-damage");
     }
   }
 
-  updateUI();
+  if (!checkEncounterComplete()) advanceToNextActor();
+  else updateUI();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[ch]);
+}
+
+function renderInitiativeTracker() {
+  const el = document.getElementById("initiativeTracker");
+  if (!el) return;
+
+  if (!combatQueue.length) {
+    el.innerHTML = "";
+    return;
+  }
+
+  let nextIdx = -1;
+  if (!combatEnded) {
+    for (let offset = 1; offset <= combatQueue.length; offset++) {
+      const idx = (activeIndex + offset) % combatQueue.length;
+      if (idx !== activeIndex && hasRemainingActions(combatQueue[idx])) {
+        nextIdx = idx;
+        break;
+      }
+    }
+  }
+
+  el.innerHTML = `
+    <div class="initiative-heading">
+      <div>
+        <span class="eyebrow">ROUND ${currentRound}</span>
+        <h3>${combatEnded ? "ENCOUNTER ENDED" : "INITIATIVE TRACKER"}</h3>
+      </div>
+      <span class="queue-hint">${combatEnded ? "Combat is over" : "One action at a time · initiative order"}</span>
+    </div>
+    <div class="initiative-list">
+      ${combatQueue.map((char, idx) => {
+        const isActive = idx === activeIndex && !combatEnded;
+        const isNext = idx === nextIdx && !isActive && !combatEnded;
+        const status = char.isDead ? "DEAD" : char.isUnconscious ? "UNCONSCIOUS" : isActive ? "ACTING NOW" : isNext ? "UP NEXT" : "IN QUEUE";
+        const base = char.actions.base;
+        const quick = char.actions.quick;
+        return `
+          <div class="initiative-entry ${isActive ? "is-active" : ""} ${isNext ? "is-next" : ""} ${!isCombatCapable(char) ? "is-out" : ""}">
+            <div class="initiative-rank">${idx + 1}</div>
+            <div class="initiative-person">
+              <strong>${escapeHtml(char.name)}</strong>
+              <span>${status} · INIT +${char.getEffectiveStat("initiative")}</span>
+            </div>
+            <div class="initiative-actions">
+              <span class="action-chip ${base > 0 ? "available" : ""}">BASE ${base}</span>
+              <span class="action-chip ${quick > 0 ? "available" : ""}">QUICK ${quick}</span>
+            </div>
+          </div>`;
+      }).join("")}
+    </div>`;
 }
 
 function renderCard(char, elId) {
   const el = document.getElementById(elId);
   if (!el || !char) return;
 
-  const isActive = combatQueue[activeIndex] === char;
+  const isActive = combatQueue[activeIndex] === char && !combatEnded;
+  const canAct = isActive && isCombatCapable(char);
   const slotMap = { 1: "head", 2: "torso", 3: "larm", 4: "rarm", 5: "lleg", 6: "rleg", 7: "aura" };
 
   let paperDollHTML = `<div class="paper-doll">`;
   Object.entries(char.bodyPlan).forEach(([locId, loc]) => {
     const areaClass = `doll-slot-${slotMap[locId]}`;
-    
-    let pegsSummary = "";
-    if (loc.pegs && Object.keys(loc.pegs).length > 0) {
-      pegsSummary = `<div style="font-size:0.7em; color:#aaa; margin-top:2px;">` + 
-        Object.entries(loc.pegs).map(([k, v]) => `${k.substring(0,4)}:${v}`).join(" | ") + 
-        `</div>`;
-    }
-
+    const pegsSummary = loc.pegs && Object.keys(loc.pegs).length > 0
+      ? `<div class="peg-summary">${Object.entries(loc.pegs).map(([k, v]) => `${escapeHtml(k.substring(0,4))}:${v}`).join(" | ")}</div>`
+      : "";
     paperDollHTML += `
-      <div class="doll-slot ${areaClass} loc-${loc.state}">
-        <div class="loc-name">${loc.name} ${loc.isVital ? "💔" : ""}</div>
-        <div class="loc-armor">🛡️ Arm: ${loc.armor}</div>
+      <div class="doll-slot loc-${loc.state} ${loc.state === "injured" || loc.state === "destroyed" ? "is-disabled" : ""}">
+        <div class="loc-name">${escapeHtml(loc.name)} ${loc.isVital ? "💔" : ""}</div>
+        <div class="loc-armor">🛡️ Armour: ${loc.armor}</div>
         <div class="loc-status">${loc.state.toUpperCase()}</div>
+        <div class="loc-wounds">G ${loc.grazeCount} · I ${loc.injuryCount}</div>
         ${pegsSummary}
-      </div>
-    `;
+      </div>`;
   });
-  paperDollHTML += `</div>`;
+  paperDollHTML += "</div>";
 
-  el.style.borderColor = isActive ? "#e9c46a" : "var(--border)";
-
-  const convertBaseButton = char.actions.base > 0
-    ? `<button class="btn" style="padding:2px 6px;font-size:0.7em;" onclick="convertAction('base','quick')">Base → 2x Quick</button>`
-    : "";
-  const convertQuickButton = char.actions.quick >= 2
-    ? `<button class="btn" style="padding:2px 6px;font-size:0.7em;" onclick="convertAction('quick','base')">2x Quick → Base</button>`
-    : "";
-
-  const scaleStatVal = char.equippedWeapon.scaling === 'strength' ? char.getEffectiveStat('strength') : char.equippedWeapon.scaling === 'finesse' ? char.getEffectiveStat('finesse') : 0;
+  el.classList.toggle("fighter-active", canAct);
+  const scaleStatVal = char.equippedWeapon.scaling === "strength"
+    ? char.getEffectiveStat("strength")
+    : char.equippedWeapon.scaling === "finesse"
+      ? char.getEffectiveStat("finesse") : 0;
+  const convertBaseButton = canAct && char.actions.base > 0
+    ? `<button class="btn btn-small" onclick="convertAction('base','quick')">Base → 2 Quick</button>` : "";
+  const convertQuickButton = canAct && char.actions.quick >= 2
+    ? `<button class="btn btn-small" onclick="convertAction('quick','base')">2 Quick → Base</button>` : "";
 
   el.innerHTML = `
-    <h2>${char.name} ${char.isDead ? "☠️ (DEAD)" : char.isUnconscious ? "💤 (UNCONSCIOUS)" : ""} ${isActive ? "⭐" : ""}</h2>
-    <div style="font-size:0.85em; margin-bottom:8px; line-height:1.5;">
-      <strong>Weapon:</strong> ${char.equippedWeapon.name} (d${char.equippedWeapon.diceSides}+${scaleStatVal}, AP:${char.equippedWeapon.ap})<br>
-      <strong>Stats:</strong> Toughness: ${char.baseToughness} | HC: ${char.baseHitClass} | Wound Cap: ${char.currentWoundCap}<br>
-      <strong>Speed:</strong> ${char.getMovementSpeed()}m (5ft) per Quick Action<br>
-      <strong>Actions:</strong> Base [${char.actions.base}] | Quick [${char.actions.quick}]<br>
-      <div style="margin-top:6px; display:flex; gap:4px; flex-wrap:wrap;">
-        ${convertBaseButton}
-        ${convertQuickButton}
+    <div class="fighter-card-head">
+      <div>
+        <div class="eyebrow">${canAct ? "YOUR ACTION" : char.isDead ? "DEAD" : char.isUnconscious ? "UNCONSCIOUS" : "COMBATANT"}</div>
+        <h2>${escapeHtml(char.name)} ${char.isDead ? "☠️" : char.isUnconscious ? "💤" : ""}</h2>
       </div>
-      <div style="margin-top:4px;">
-        <strong>Wounds:</strong> Grazes (${char.totalGrazes}) | Injuries (${char.totalInjuries}) ${char.statuses.brokenDefense ? "| 💥 [DEFENSE BROKEN]" : ""}
-      </div>
+      ${canAct ? '<span class="acting-pill">ACTING NOW</span>' : ""}
+    </div>
+    <div class="fighter-summary">
+      <strong>Weapon:</strong> ${escapeHtml(char.equippedWeapon.name)} (d${char.equippedWeapon.diceSides} + ${scaleStatVal} stat + ${char.equippedWeapon.flatDmg} flat, AP ${char.equippedWeapon.ap})<br>
+      <strong>Stats:</strong> Toughness ${char.baseToughness} · HC ${char.baseHitClass} · Wound Cap ${char.currentWoundCap}<br>
+      <strong>Movement:</strong> ${char.getMovementSpeed()} ft per Quick Action<br>
+      <strong>Wounds:</strong> Grazes ${char.totalGrazes} · Injuries ${char.totalInjuries} ${char.statuses.brokenDefense ? "· 💥 DEFENCE BROKEN" : ""}
+      <div class="action-conversions">${convertBaseButton}${convertQuickButton}</div>
     </div>
 
-    <h4>Anatomical Status Map</h4>
+    <h4>Anatomical status</h4>
     ${paperDollHTML}
 
-    <h4 style="margin-top:10px;">Combat Actions</h4>
-    <div style="display:flex; gap:6px; flex-wrap:wrap;">
-      <button class="btn" ${!isActive || char.isUnconscious || char.isDead ? "disabled" : ""} onclick="executeAttack(false)">⚔️ Base Attack (d20)</button>
-      <button class="btn" ${!isActive || char.isUnconscious || char.isDead ? "disabled" : ""} onclick="executeAttack(true)">⚡ Quick Attack (d10)</button>
-      <button class="btn" ${!isActive || char.isUnconscious || char.isDead ? "disabled" : ""} onclick="executeBreak()">🛡️ Break Stance</button>
-    </div>
-  `;
+    <h4 class="combat-actions-heading">Combat actions</h4>
+    <div class="combat-actions">
+      <button class="btn" ${!canAct || char.actions.base <= 0 ? "disabled" : ""} onclick="executeAttack(false)">⚔️ Base attack · d20</button>
+      <button class="btn" ${!canAct || char.actions.quick <= 0 ? "disabled" : ""} onclick="executeAttack(true)">⚡ Quick attack · d10</button>
+      <button class="btn" ${!canAct || char.actions.base <= 0 ? "disabled" : ""} onclick="executeBreak()">🛡️ Break stance · Base</button>
+    </div>`;
 }
 
 function updateUI() {
   if (!f1 || !f2) return;
   renderCard(f1, "f1-card");
   renderCard(f2, "f2-card");
+  renderInitiativeTracker();
 
   const active = combatQueue[activeIndex];
   const turnBanner = document.getElementById("turnBanner");
   if (turnBanner) {
-    turnBanner.innerText = active
-      ? `Active Turn: Round ${currentRound} -> ${active.name}`
-      : `Combat Ended`;
+    turnBanner.innerText = combatEnded
+      ? "Encounter ended"
+      : active
+        ? `ROUND ${currentRound} — ${active.name} is acting`
+        : `ROUND ${currentRound}`;
   }
+
+  const endButton = document.getElementById("endActivationButton");
+  if (endButton) endButton.disabled = combatEnded || !active;
+  const resetButton = document.getElementById("resetCombatButton");
+  if (resetButton) resetButton.disabled = !f1 || !f2;
 }
