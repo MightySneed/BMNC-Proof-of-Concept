@@ -483,6 +483,7 @@ function startTurn(char) {
   if (!isCombatCapable(char)) {
     char.actions.base = 0;
     char.actions.quick = 0;
+    char.actions.bonusQuick = 0;
     advanceToNextActor();
     return;
   }
@@ -499,6 +500,7 @@ function startTurn(char) {
     char.isDead = true;
     char.actions.base = 0;
     char.actions.quick = 0;
+    char.actions.bonusQuick = 0;
     log(`☠️ ${char.name} has suffered a destroyed vital location and dies.`, "log-damage");
     if (!checkEncounterComplete()) advanceToNextActor();
     else updateUI();
@@ -513,6 +515,7 @@ function startTurn(char) {
     char.isUnconscious = true;
     char.actions.base = 0;
     char.actions.quick = 0;
+    char.actions.bonusQuick = 0;
     log(`💤 ${char.name} has ${injuries} injuries, exceeding Wound Cap ${char.currentWoundCap}; they collapse.`, "log-damage");
     if (!checkEncounterComplete()) advanceToNextActor();
     else updateUI();
@@ -527,6 +530,7 @@ function startTurn(char) {
       char.isUnconscious = true;
       char.actions.base = 0;
       char.actions.quick = 0;
+    char.actions.bonusQuick = 0;
       log(`💤 Check failed: ${char.name} falls unconscious.`, "log-damage");
       if (!checkEncounterComplete()) advanceToNextActor();
       else updateUI();
@@ -555,6 +559,7 @@ function advanceToNextActor() {
     if (!isCombatCapable(char)) {
       char.actions.base = 0;
       char.actions.quick = 0;
+    char.actions.bonusQuick = 0;
       continue;
     }
     if (hasRemainingActions(char)) {
@@ -564,13 +569,17 @@ function advanceToNextActor() {
     }
   }
 
-  // Everyone has spent their action pool. Start a new round and begin again
-  // at the top of the fixed initiative order.
+  // Everyone has spent their action pool. Recalculate initiative for the new
+  // round because injuries can disable pegged Initiative points.
   currentRound++;
+  combatQueue.sort((a, b) => b.getEffectiveStat("initiative") - a.getEffectiveStat("initiative"));
   combatQueue.forEach(char => char.resetTurnActions());
   activeIndex = count - 1;
   log("========================================", "log-round");
   log(`--- ROUND ${currentRound} START ---`, "log-round");
+  log(`Initiative: ${combatQueue.map(char =>
+    `${char.name} (+${char.getEffectiveStat("initiative")})`
+  ).join(" → ")}`, "log-round");
   advanceToNextActor();
 }
 
@@ -581,6 +590,7 @@ function nextTurn() {
   if (!char || combatEnded) return;
   char.actions.base = 0;
   char.actions.quick = 0;
+    char.actions.bonusQuick = 0;
   log(`⏭️ ${char.name} passes and forfeits remaining actions.`);
   advanceToNextActor();
 }
