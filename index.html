@@ -19,16 +19,28 @@
         
         <h4>Primary Stats</h4>
         <div class="stat-row">Body Level: <input type="number" id="f1-p-body" value="2" min="0" onchange="buildCreatorUI()"></div>
-        <div class="stat-row">Nerve Level: <input type="number" id="f1-p-nerve" value="1" min="0" onchange="buildCreatorUI()"></div>
+        <div class="stat-row">Nerve Level: <input type="number" id="f1-p-nerve" value="2" min="0" onchange="buildCreatorUI()"></div>
         <div class="stat-row">Character Level: <input type="number" id="f1-p-char" value="1" min="0" onchange="buildCreatorUI()"></div>
 
         <h4>Allocate Sub-Stats</h4>
         <div id="f1-substats"></div>
 
+        <h4>Location Armor Settings</h4>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:0.8em;">
+          <div>Head: <input type="number" id="f1-ar-1" value="1" style="width:35px;"></div>
+          <div>Torso: <input type="number" id="f1-ar-2" value="2" style="width:35px;"></div>
+          <div>L.Arm: <input type="number" id="f1-ar-3" value="1" style="width:35px;"></div>
+          <div>R.Arm: <input type="number" id="f1-ar-4" value="1" style="width:35px;"></div>
+          <div>L.Leg: <input type="number" id="f1-ar-5" value="1" style="width:35px;"></div>
+          <div>R.Leg: <input type="number" id="f1-ar-6" value="1" style="width:35px;"></div>
+        </div>
+
+        <h4>Stat Pegging (Distribute Sub-Stats to Locations)</h4>
+        <div id="f1-pegging-container"></div>
+
         <h4>Equipped Weapon</h4>
-        <div style="font-size:0.85em; display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+        <div style="font-size:0.85em; display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:8px;">
           <div>Name: <input type="text" id="f1-w-name" value="Greatsword" style="width:90px;"></div>
-          <div>Hit Mod: <input type="number" id="f1-w-hit" value="0" style="width:40px;"></div>
           <div>Dice Sides (dX): <input type="number" id="f1-w-dice" value="8" style="width:40px;"></div>
           <div>Scaling: 
             <select id="f1-w-scale">
@@ -39,16 +51,6 @@
           </div>
           <div>Flat Dmg: <input type="number" id="f1-w-flat" value="2" style="width:40px;"></div>
           <div>Armor Pen (AP): <input type="number" id="f1-w-ap" value="3" style="width:40px;"></div>
-        </div>
-
-        <h4>Location Armor (Head, Torso, L.Arm, R.Arm, L.Leg, R.Leg)</h4>
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:4px; font-size:0.8em;">
-          <div>Head: <input type="number" id="f1-ar-1" value="1" style="width:30px;"></div>
-          <div>Torso: <input type="number" id="f1-ar-2" value="2" style="width:30px;"></div>
-          <div>L.Arm: <input type="number" id="f1-ar-3" value="1" style="width:30px;"></div>
-          <div>R.Arm: <input type="number" id="f1-ar-4" value="1" style="width:30px;"></div>
-          <div>L.Leg: <input type="number" id="f1-ar-5" value="1" style="width:30px;"></div>
-          <div>R.Leg: <input type="number" id="f1-ar-6" value="1" style="width:30px;"></div>
         </div>
       </div>
 
@@ -65,10 +67,22 @@
         <h4>Allocate Sub-Stats</h4>
         <div id="f2-substats"></div>
 
+        <h4>Location Armor Settings</h4>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:0.8em;">
+          <div>Head: <input type="number" id="f2-ar-1" value="1" style="width:35px;"></div>
+          <div>Torso: <input type="number" id="f2-ar-2" value="1" style="width:35px;"></div>
+          <div>L.Arm: <input type="number" id="f2-ar-3" value="1" style="width:35px;"></div>
+          <div>R.Arm: <input type="number" id="f2-ar-4" value="1" style="width:35px;"></div>
+          <div>L.Leg: <input type="number" id="f2-ar-5" value="1" style="width:35px;"></div>
+          <div>R.Leg: <input type="number" id="f2-ar-6" value="1" style="width:35px;"></div>
+        </div>
+
+        <h4>Stat Pegging (Distribute Sub-Stats to Locations)</h4>
+        <div id="f2-pegging-container"></div>
+
         <h4>Equipped Weapon</h4>
-        <div style="font-size:0.85em; display:grid; grid-template-columns: 1fr 1fr; gap:6px;">
+        <div style="font-size:0.85em; display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:8px;">
           <div>Name: <input type="text" id="f2-w-name" value="Sabre" style="width:90px;"></div>
-          <div>Hit Mod: <input type="number" id="f2-w-hit" value="2" style="width:40px;"></div>
           <div>Dice Sides (dX): <input type="number" id="f2-w-dice" value="6" style="width:40px;"></div>
           <div>Scaling: 
             <select id="f2-w-scale">
@@ -79,16 +93,6 @@
           </div>
           <div>Flat Dmg: <input type="number" id="f2-w-flat" value="1" style="width:40px;"></div>
           <div>Armor Pen (AP): <input type="number" id="f2-w-ap" value="1" style="width:40px;"></div>
-        </div>
-
-        <h4>Location Armor (Head, Torso, L.Arm, R.Arm, L.Leg, R.Leg)</h4>
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:4px; font-size:0.8em;">
-          <div>Head: <input type="number" id="f2-ar-1" value="1" style="width:30px;"></div>
-          <div>Torso: <input type="number" id="f2-ar-2" value="1" style="width:30px;"></div>
-          <div>L.Arm: <input type="number" id="f2-ar-3" value="1" style="width:30px;"></div>
-          <div>R.Arm: <input type="number" id="f2-ar-4" value="1" style="width:30px;"></div>
-          <div>L.Leg: <input type="number" id="f2-ar-5" value="1" style="width:30px;"></div>
-          <div>R.Leg: <input type="number" id="f2-ar-6" value="1" style="width:30px;"></div>
         </div>
       </div>
     </div>

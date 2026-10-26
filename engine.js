@@ -1,7 +1,6 @@
 class Weapon {
-  constructor({ name, hitMod, diceSides, scaling, flatDmg, ap }) {
+  constructor({ name, diceSides, scaling, flatDmg, ap }) {
     this.name = name;
-    this.hitMod = hitMod;
     this.diceSides = diceSides;
     this.scaling = scaling;
     this.flatDmg = flatDmg;
@@ -10,33 +9,55 @@ class Weapon {
 }
 
 class Fighter {
-  constructor(name, primaries, substats, weapon, armorMap, vitalsMap) {
+  constructor(name, primaries, substats, weapon, armorMap, pegAllocations) {
     this.name = name;
     this.primaries = primaries; 
     this.substats = substats;   
     this.equippedWeapon = weapon;
-    
-    this.actions = { base: 1, quick: this.substats.quickActions || 0 };
+
+    // 1. Initialize bodyPlan FIRST so getStatPenalty/getEffectiveStat have an object to read
+    this.bodyPlan = {
+      1: { name: "Head", state: "untouched", armor: armorMap[1] || 0, isVital: true, pegs: pegAllocations[1] || {} },
+      2: { name: "Torso", state: "untouched", armor: armorMap[2] || 0, isVital: false, pegs: pegAllocations[2] || {} },
+      3: { name: "Left Arm", state: "untouched", armor: armorMap[3] || 0, isVital: false, pegs: pegAllocations[3] || {} },
+      4: { name: "Right Arm", state: "untouched", armor: armorMap[4] || 0, isVital: false, pegs: pegAllocations[4] || {} },
+      5: { name: "Left Leg", state: "untouched", armor: armorMap[5] || 0, isVital: false, pegs: pegAllocations[5] || {} },
+      6: { name: "Right Leg", state: "untouched", armor: armorMap[6] || 0, isVital: false, pegs: pegAllocations[6] || {} },
+      7: { name: "Aura/System", state: "untouched", armor: 0, isVital: false, pegs: pegAllocations[7] || {} }
+    };
+
+    // 2. Initialize actions and combat state SECOND
+    this.actions = { base: 1, quick: this.getEffectiveStat('quickActions') };
     this.isUnconscious = false;
     this.isDead = false;
     this.statuses = { brokenDefense: false };
-
-    // 7 Hit Locations (1-6 Physical, 7 Aura/System)
-    // Custom Vital settings can be passed in
-    this.bodyPlan = {
-      1: { name: "Head", state: "untouched", armor: armorMap[1] || 0, isVital: vitalsMap ? vitalsMap[1] : true },
-      2: { name: "Torso", state: "untouched", armor: armorMap[2] || 0, isVital: vitalsMap ? vitalsMap[2] : false },
-      3: { name: "Left Arm", state: "untouched", armor: armorMap[3] || 0, isVital: vitalsMap ? vitalsMap[3] : false },
-      4: { name: "Right Arm", state: "untouched", armor: armorMap[4] || 0, isVital: vitalsMap ? vitalsMap[4] : false },
-      5: { name: "Left Leg", state: "untouched", armor: armorMap[5] || 0, isVital: vitalsMap ? vitalsMap[5] : false },
-      6: { name: "Right Leg", state: "untouched", armor: armorMap[6] || 0, isVital: vitalsMap ? vitalsMap[6] : false },
-      7: { name: "Aura/System", state: "untouched", armor: 0, isVital: vitalsMap ? vitalsMap[7] : false }
-    };
   }
 
-  get baseToughness() { return 5 + this.substats.toughness; }
-  get baseHitClass() { return 10 + this.substats.hc; }
+  get baseToughness() { return 5 + (this.substats.toughness || 0); }
+  get baseHitClass() { return 10 + (this.substats.hc || 0); }
   get currentWoundCap() { return 1 + (this.substats.woundCap || 0); }
+
+  getStatPenalty(statKey) {
+    let penalty = 0;
+    Object.values(this.bodyPlan).forEach(loc => {
+      if ((loc.state === "injured" || loc.state === "destroyed") && loc.pegs && loc.pegs[statKey]) {
+        penalty += loc.pegs[statKey];
+      }
+    });
+    return penalty;
+  }
+
+  getEffectiveStat(statKey) {
+    const baseVal = this.substats[statKey] || 0;
+    return Math.max(0, baseVal - this.getStatPenalty(statKey));
+  }
+
+  getMovementSpeed() {
+    let activeLegs = 0;
+    if (this.bodyPlan[5].state !== "injured" && this.bodyPlan[5].state !== "destroyed") activeLegs++;
+    if (this.bodyPlan[6].state !== "injured" && this.bodyPlan[6].state !== "destroyed") activeLegs++;
+    return activeLegs * 3;
+  }
 
   get totalGrazes() { return Object.values(this.bodyPlan).filter(l => l.state === "grazed").length; }
   get totalInjuries() { return Object.values(this.bodyPlan).filter(l => l.state === "injured" || l.state === "destroyed").length; }
@@ -44,16 +65,15 @@ class Fighter {
 
   resetTurnActions() {
     this.actions.base = 1;
-    this.actions.quick = this.substats.quickActions || 0;
+    this.actions.quick = this.getEffectiveStat('quickActions');
   }
 
-  // Fully restore character state for rematches
   resetFullState() {
     this.isDead = false;
     this.isUnconscious = false;
     this.statuses.brokenDefense = false;
-    this.resetTurnActions();
     Object.values(this.bodyPlan).forEach(loc => loc.state = "untouched");
+    this.resetTurnActions();
   }
 }
 
@@ -74,18 +94,20 @@ function log(msg, cls = "") {
 }
 
 const subStatDefs = [
-  { key: "strength", label: "Strength", parent: "body" },
-  { key: "toughness", label: "Toughness", parent: "body", isDoubleCost: true },
-  { key: "con", label: "Constitution", parent: "body" },
-  { key: "woundCap", label: "Wound Capacity", parent: "body", isWoundCap: true, isDoubleCost: true },
-  { key: "initiative", label: "Initiative Bonus", parent: "nerve" },
-  { key: "hc", label: "Hit Class", parent: "nerve" },
-  { key: "hitMod", label: "Hit Modifier", parent: "nerve" },
-  { key: "finesse", label: "Finesse", parent: "nerve" },
-  { key: "quickActions", label: "Quick Actions", parent: "nerve" },
-  { key: "gumption", label: "Gumption", parent: "character" },
-  { key: "charisma", label: "Charisma", parent: "character" }
+  { key: "strength", label: "Strength", parent: "body", validLocs: [2, 3, 4, 5, 6] },
+  { key: "toughness", label: "Toughness", parent: "body", isDoubleCost: true, isUnpegged: true },
+  { key: "con", label: "Constitution", parent: "body", validLocs: [1, 2] },
+  { key: "woundCap", label: "Wound Capacity", parent: "body", isWoundCap: true, isDoubleCost: true, isUnpegged: true },
+  { key: "dexterity", label: "Dexterity", parent: "nerve", validLocs: [1, 2, 3, 4, 5, 6] },
+  { key: "initiative", label: "Initiative Bonus", parent: "nerve", validLocs: [1, 5, 6, 7] },
+  { key: "hc", label: "Hit Class (HC)", parent: "nerve", isDoubleCost: true, isUnpegged: true },
+  { key: "finesse", label: "Finesse", parent: "nerve", validLocs: [3, 4, 5, 6] },
+  { key: "quickActions", label: "Quick Actions", parent: "nerve", validLocs: [3, 4] },
+  { key: "gumption", label: "Gumption", parent: "character", validLocs: [1, 2, 7] },
+  { key: "charisma", label: "Charisma", parent: "character", validLocs: [1, 2, 7] }
 ];
+
+const locationNames = { 1: "Head", 2: "Torso", 3: "L.Arm", 4: "R.Arm", 5: "L.Leg", 6: "R.Leg", 7: "Aura" };
 
 function calcCumulativeXP(lvl) {
   return (lvl * (lvl + 1)) / 2;
@@ -93,15 +115,12 @@ function calcCumulativeXP(lvl) {
 
 function calculateTotalXP(id) {
   let totalXP = 0;
-
   const pBody = parseInt(document.getElementById(`f${id}-p-body`).value) || 0;
   const pNerve = parseInt(document.getElementById(`f${id}-p-nerve`).value) || 0;
   const pChar = parseInt(document.getElementById(`f${id}-p-char`).value) || 0;
 
-  // Primary stats standard cost
   totalXP += calcCumulativeXP(pBody) + calcCumulativeXP(pNerve) + calcCumulativeXP(pChar);
 
-  // Sub-stats cost check
   subStatDefs.forEach(s => {
     const el = document.getElementById(`f${id}-s-${s.key}`);
     if (el) {
@@ -112,7 +131,103 @@ function calculateTotalXP(id) {
   });
 
   const xpDisplay = document.getElementById(`f${id}-xp`);
-  if (xpDisplay) xpDisplay.innerText = `Total XP Spent: ${totalXP}`;
+  if (xpDisplay) xpDisplay.innerText = `XP Spent: ${totalXP}`;
+
+  renderPeggingTable(id);
+}
+
+function autoDistributePegs(id, key, totalVal, validLocs) {
+  // Read existing manual overrides if present, otherwise calculate auto-peg
+  let allocated = 0;
+  const inputs = validLocs.map(locId => document.getElementById(`f${id}-peg-${key}-${locId}`));
+  const hasExistingValues = inputs.some(i => i && i.value !== "");
+
+  if (hasExistingValues) return; // Keep manual user inputs
+
+  // Distribute points round-robin across valid locations by default
+  let remaining = totalVal;
+  let idx = 0;
+  const distribution = {};
+  validLocs.forEach(l => distribution[l] = 0);
+
+  while (remaining > 0 && validLocs.length > 0) {
+    distribution[validLocs[idx % validLocs.length]]++;
+    remaining--;
+    idx++;
+  }
+
+  validLocs.forEach(locId => {
+    const el = document.getElementById(`f${id}-peg-${key}-${locId}`);
+    if (el) el.value = distribution[locId];
+  });
+}
+
+function validatePegRow(id, key, totalVal, validLocs) {
+  let sum = 0;
+  validLocs.forEach(locId => {
+    const el = document.getElementById(`f${id}-peg-${key}-${locId}`);
+    if (el) sum += parseInt(el.value) || 0;
+  });
+
+  const statusEl = document.getElementById(`f${id}-peg-status-${key}`);
+  const rowEl = document.getElementById(`f${id}-peg-row-${key}`);
+
+  if (sum === totalVal) {
+    if (statusEl) statusEl.innerHTML = `<span class="peg-valid">✓ (${sum}/${totalVal})</span>`;
+    if (rowEl) rowEl.classList.remove("peg-row-error");
+  } else {
+    const diff = totalVal - sum;
+    const msg = diff > 0 ? `${diff} unallocated` : `${Math.abs(diff)} over allocated!`;
+    if (statusEl) statusEl.innerHTML = `<span class="peg-warning">⚠️ (${sum}/${totalVal} - ${msg})</span>`;
+    if (rowEl) rowEl.classList.add("peg-row-error");
+  }
+}
+
+function renderPeggingTable(id) {
+  const container = document.getElementById(`f${id}-pegging-container`);
+  if (!container) return;
+
+  // Preserve existing inputs before re-render
+  const currentInputs = {};
+  subStatDefs.filter(s => !s.isUnpegged).forEach(s => {
+    s.validLocs.forEach(locId => {
+      const el = document.getElementById(`f${id}-peg-${s.key}-${locId}`);
+      if (el) currentInputs[`${s.key}-${locId}`] = el.value;
+    });
+  });
+
+  let html = `<table class="peg-table"><thead><tr><th>Sub-Stat</th><th>Total</th><th>Status</th>`;
+  for (let l = 1; l <= 7; l++) html += `<th>${locationNames[l]}</th>`;
+  html += `</tr></thead><tbody>`;
+
+  subStatDefs.filter(s => !s.isUnpegged).forEach(s => {
+    const val = parseInt(document.getElementById(`f${id}-s-${s.key}`)?.value) || 0;
+    html += `<tr id="f${id}-peg-row-${s.key}">
+      <td><strong>${s.label}</strong></td>
+      <td>${val}</td>
+      <td id="f${id}-peg-status-${s.key}"></td>`;
+
+    for (let locId = 1; locId <= 7; locId++) {
+      if (s.validLocs.includes(locId)) {
+        const savedVal = currentInputs[`${s.key}-${locId}`];
+        const displayVal = savedVal !== undefined ? savedVal : "";
+        html += `<td><input type="number" class="peg-input" id="f${id}-peg-${s.key}-${locId}" value="${displayVal}" min="0" max="${val}" oninput="validatePegRow(${id}, '${s.key}', ${val}, [${s.validLocs.join(',')}])"></td>`;
+      } else {
+        html += `<td style="color:#444;">-</td>`;
+      }
+    }
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+
+  // Auto-fill defaults and run validation checks on rows
+  subStatDefs.filter(s => !s.isUnpegged).forEach(s => {
+    const val = parseInt(document.getElementById(`f${id}-s-${s.key}`)?.value) || 0;
+    autoDistributePegs(id, s.key, val, s.validLocs);
+    validatePegRow(id, s.key, val, s.validLocs);
+  });
 }
 
 function buildCreatorUI() {
@@ -133,7 +248,7 @@ function buildCreatorUI() {
       container.innerHTML += `
         <div class="stat-row">
           <span>${s.label} ${s.isDoubleCost ? "⚡(2x XP)" : ""} (Max ${maxLevel}):</span>
-          <input type="number" id="f${id}-s-${s.key}" value="0" min="0" max="${maxLevel}" onchange="calculateTotalXP(${id})">
+          <input type="number" id="f${id}-s-${s.key}" value="${s.key === 'dexterity' ? 1 : 0}" min="0" max="${maxLevel}" onchange="calculateTotalXP(${id})">
         </div>
       `;
     });
@@ -142,70 +257,81 @@ function buildCreatorUI() {
   });
 }
 
-// Initial UI Build
 buildCreatorUI();
 
 function startBattle() {
   function readFighter(id) {
-    const name = document.getElementById(`f${id}-name`).value;
+    const name = document.getElementById(`f${id}-name`)?.value || `Fighter ${id}`;
     const primaries = {
-      body: parseInt(document.getElementById(`f${id}-p-body`).value) || 0,
-      nerve: parseInt(document.getElementById(`f${id}-p-nerve`).value) || 0,
-      character: parseInt(document.getElementById(`f${id}-p-char`).value) || 0
+      body: parseInt(document.getElementById(`f${id}-p-body`)?.value) || 0,
+      nerve: parseInt(document.getElementById(`f${id}-p-nerve`)?.value) || 0,
+      character: parseInt(document.getElementById(`f${id}-p-char`)?.value) || 0
     };
 
     const substats = {};
     subStatDefs.forEach(s => {
-      substats[s.key] = parseInt(document.getElementById(`f${id}-s-${s.key}`).value) || 0;
+      const el = document.getElementById(`f${id}-s-${s.key}`);
+      substats[s.key] = el ? (parseInt(el.value) || 0) : 0;
     });
 
     const weapon = new Weapon({
-      name: document.getElementById(`f${id}-w-name`).value,
-      hitMod: parseInt(document.getElementById(`f${id}-w-hit`).value) || 0,
-      diceSides: parseInt(document.getElementById(`f${id}-w-dice`).value) || 6,
-      scaling: document.getElementById(`f${id}-w-scale`).value,
-      flatDmg: parseInt(document.getElementById(`f${id}-w-flat`).value) || 0,
-      ap: parseInt(document.getElementById(`f${id}-w-ap`).value) || 0
+      name: document.getElementById(`f${id}-w-name`)?.value || "Unarmed",
+      diceSides: parseInt(document.getElementById(`f${id}-w-dice`)?.value) || 6,
+      scaling: document.getElementById(`f${id}-w-scale`)?.value || "none",
+      flatDmg: parseInt(document.getElementById(`f${id}-w-flat`)?.value) || 0,
+      ap: parseInt(document.getElementById(`f${id}-w-ap`)?.value) || 0
     });
 
     const armorMap = {};
     for (let i = 1; i <= 6; i++) {
-      armorMap[i] = parseInt(document.getElementById(`f${id}-ar-${i}`).value) || 0;
+      armorMap[i] = parseInt(document.getElementById(`f${id}-ar-${i}`)?.value) || 0;
     }
 
-    return new Fighter(name, primaries, substats, weapon, armorMap);
+    const pegAllocations = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}, 7: {} };
+    subStatDefs.filter(s => !s.isUnpegged).forEach(s => {
+      s.validLocs.forEach(locId => {
+        const inputEl = document.getElementById(`f${id}-peg-${s.key}-${locId}`);
+        if (inputEl) {
+          const count = parseInt(inputEl.value) || 0;
+          if (count > 0) pegAllocations[locId][s.key] = count;
+        }
+      });
+    });
+
+    return new Fighter(name, primaries, substats, weapon, armorMap, pegAllocations);
   }
 
-  f1 = readFighter(1);
-  f2 = readFighter(2);
+  try {
+    f1 = readFighter(1);
+    f2 = readFighter(2);
 
-  document.getElementById("setupScreen").style.display = "none";
-  document.getElementById("battleScreen").style.display = "block";
+    document.getElementById("setupScreen").style.display = "none";
+    document.getElementById("battleScreen").style.display = "block";
 
-  restartMatch();
+    restartMatch();
+  } catch (err) {
+    console.error("Start Battle Error:", err);
+    alert("Could not start battle! Check browser console (F12) for details.");
+  }
 }
 
-// Resets fight and restarts Round 1 with same characters
 function restartMatch() {
-  if (!f1 || !f2) return;
-
   f1.resetFullState();
   f2.resetFullState();
 
   document.getElementById("combatLog").innerHTML = "";
 
-  combatQueue = [f1, f2].sort((a, b) => b.substats.initiative - a.substats.initiative);
+  combatQueue = [f1, f2].sort((a, b) => b.getEffectiveStat('initiative') - a.getEffectiveStat('initiative'));
   activeIndex = 0;
   currentRound = 1;
 
   log(`========================================`, "log-round");
   log(`--- ROUND 1 START ---`, "log-round");
-  log(`Turn Order: ${combatQueue[0].name} (Init +${combatQueue[0].substats.initiative}) -> ${combatQueue[1].name} (Init +${combatQueue[1].substats.initiative})`, "log-round");
+  log(`Turn Order: ${combatQueue[0].name} (Init +${combatQueue[0].getEffectiveStat('initiative')}) -> ${combatQueue[1].name} (Init +${combatQueue[1].getEffectiveStat('initiative')})`, "log-round");
 
   startTurn(combatQueue[0]);
 }
 
-// TURN ACTIVATION: Handles Vital Death and Consciousness Checks at Start of Turn
 function startTurn(char) {
   char.resetTurnActions();
 
@@ -217,7 +343,6 @@ function startTurn(char) {
 
   log(`\n▶️ ${char.name}'s Activation Start.`);
 
-  // 1. Check Vital Location Death
   let vitalDestroyed = false;
   Object.values(char.bodyPlan).forEach(loc => {
     if (loc.isVital && loc.state === "destroyed") vitalDestroyed = true;
@@ -230,17 +355,17 @@ function startTurn(char) {
     return;
   }
 
-  // 2. Check Gumption Consciousness Check
   const injuries = char.totalInjuries;
   const woundsSum = char.totalWoundsSum;
+  const effectiveGumption = char.getEffectiveStat('gumption');
 
   if (injuries > char.currentWoundCap) {
     char.isUnconscious = true;
     log(`💤 ${char.name} has ${injuries} Injuries (Exceeds Wound Cap of ${char.currentWoundCap}) and passes out!`, "log-damage");
   } else if (injuries >= char.currentWoundCap) {
     const roll = d20();
-    const total = roll + char.substats.gumption - woundsSum;
-    log(`🧠 Gumption Check: d20(${roll}) + Gump(${char.substats.gumption}) - Wounds(${woundsSum}) = ${total} (Needs > 10)`, "log-check");
+    const total = roll + effectiveGumption - woundsSum;
+    log(`🧠 Gumption Check: d20(${roll}) + Gump(${effectiveGumption}) - Wounds(${woundsSum}) = ${total} (Needs > 10)`, "log-check");
 
     if (total <= 10) {
       char.isUnconscious = true;
@@ -254,8 +379,6 @@ function startTurn(char) {
 }
 
 function nextTurn() {
-  if (!combatQueue.length) return;
-
   activeIndex++;
   if (activeIndex >= combatQueue.length) {
     activeIndex = 0;
@@ -269,8 +392,6 @@ function nextTurn() {
 
 function convertAction(fromType, toType) {
   const char = combatQueue[activeIndex];
-  if (!char) return;
-
   if (fromType === "base" && toType === "quick") {
     if (char.actions.base >= 1) {
       char.actions.base -= 1;
@@ -291,8 +412,6 @@ function executeBreak() {
   const attacker = combatQueue[activeIndex];
   const defender = attacker === f1 ? f2 : f1;
 
-  if (!attacker || !defender) return;
-
   if (attacker.actions.base <= 0) {
     log(`⚠️ No base action remaining for Break!`);
     return;
@@ -300,8 +419,8 @@ function executeBreak() {
   attacker.actions.base--;
 
   const targetWounds = defender.totalWoundsSum;
-  const attRoll = d20() + attacker.substats.strength + targetWounds;
-  const defRoll = d20() + defender.substats.gumption;
+  const attRoll = d20() + attacker.getEffectiveStat('strength') + targetWounds;
+  const defRoll = d20() + defender.getEffectiveStat('gumption');
 
   log(`🛡️ ${attacker.name} attempts a BREAK on ${defender.name}...`);
   if (attRoll > defRoll) {
@@ -313,12 +432,10 @@ function executeBreak() {
   updateUI();
 }
 
-// ATTACK RESOLUTION: Only d20 Base Attacks can Critical
 function executeAttack(isQuick = false) {
   const attacker = combatQueue[activeIndex];
   const defender = attacker === f1 ? f2 : f1;
 
-  if (!attacker || !defender) return;
   if (attacker.isUnconscious || attacker.isDead) return;
 
   const actionType = isQuick ? "quick" : "base";
@@ -330,16 +447,13 @@ function executeAttack(isQuick = false) {
 
   log(`💥 ${attacker.name} strikes ${defender.name} with [${attacker.equippedWeapon.name}] (${actionType.toUpperCase()})...`);
 
-  // Base Attack = d20 | Quick Attack = d10
   const roll = isQuick ? d10() : d20();
-  const hitBonus = attacker.substats.hitMod + attacker.equippedWeapon.hitMod;
+  const hitBonus = attacker.getEffectiveStat('dexterity');
   const totalHit = roll + hitBonus;
-  
-  // ONLY d20 Base Attacks can roll a Natural 20 Critical
   const isNat20 = (!isQuick && roll === 20);
 
   if (!isNat20 && totalHit < defender.baseHitClass) {
-    log(`❌ Miss! Roll ${roll} [${isQuick ? 'd10' : 'd20'}] (+${hitBonus}) = ${totalHit} vs HC ${defender.baseHitClass}`);
+    log(`❌ Miss! Roll ${roll} [${isQuick ? 'd10' : 'd20'}] (+${hitBonus} Dex) = ${totalHit} vs HC ${defender.baseHitClass}`);
     updateUI();
     return;
   }
@@ -348,8 +462,8 @@ function executeAttack(isQuick = false) {
   const location = defender.bodyPlan[locRoll];
 
   let scalingVal = 0;
-  if (attacker.equippedWeapon.scaling === 'strength') scalingVal = attacker.substats.strength;
-  if (attacker.equippedWeapon.scaling === 'finesse') scalingVal = attacker.substats.finesse;
+  if (attacker.equippedWeapon.scaling === 'strength') scalingVal = attacker.getEffectiveStat('strength');
+  if (attacker.equippedWeapon.scaling === 'finesse') scalingVal = attacker.getEffectiveStat('finesse');
 
   const rawDamage = Math.floor(Math.random() * attacker.equippedWeapon.diceSides) + 1 + scalingVal + attacker.equippedWeapon.flatDmg;
   const effectiveArmor = Math.max(0, location.armor - attacker.equippedWeapon.ap);
@@ -357,10 +471,9 @@ function executeAttack(isQuick = false) {
 
   log(`🎯 HIT on ${location.name}! Roll ${roll} [${isQuick ? 'd10' : 'd20'}]. Raw Dmg: ${rawDamage} (Armor: ${location.armor} - AP: ${attacker.equippedWeapon.ap} = Eff. Armor ${effectiveArmor})`);
 
- if (damageAfterArmor <= 0) {
+  if (damageAfterArmor <= 0) {
     log(`🛡️ Armor absorbed the entire hit!`);
   } else {
-    // 1. Determine base hit tier from Net Damage vs Toughness
     let newTier = "grazed";
     if (damageAfterArmor >= (defender.baseToughness * 2)) {
       newTier = "destroyed";
@@ -368,7 +481,6 @@ function executeAttack(isQuick = false) {
       newTier = "injured";
     }
 
-    // 2. Apply Stacked Upgrades (Nat 20 on d20 + Broken Defense)
     let upgradeSteps = 0;
     if (defender.statuses.brokenDefense) { upgradeSteps++; defender.statuses.brokenDefense = false; }
     if (isNat20) { upgradeSteps++; }
@@ -381,7 +493,6 @@ function executeAttack(isQuick = false) {
       log(`⚡ STACKED CRITICAL/BREAK upgrade applied (+${upgradeSteps} tiers)!`);
     }
 
-    // 3. Apply Severity Hierarchy (Prevent lesser wounds from overwriting severe ones)
     const tierSeverity = { "untouched": 0, "grazed": 1, "injured": 2, "destroyed": 3 };
     const currentSeverity = tierSeverity[location.state] || 0;
     const incomingSeverity = tierSeverity[newTier];
@@ -402,25 +513,25 @@ function renderCard(char, elId) {
   if (!el || !char) return;
 
   const isActive = combatQueue[activeIndex] === char;
-
-  const slotMap = {
-    1: "head",
-    2: "torso",
-    3: "larm",
-    4: "rarm",
-    5: "lleg",
-    6: "rleg",
-    7: "aura"
-  };
+  const slotMap = { 1: "head", 2: "torso", 3: "larm", 4: "rarm", 5: "lleg", 6: "rleg", 7: "aura" };
 
   let paperDollHTML = `<div class="paper-doll">`;
   Object.entries(char.bodyPlan).forEach(([locId, loc]) => {
     const areaClass = `doll-slot-${slotMap[locId]}`;
+    
+    let pegsSummary = "";
+    if (loc.pegs && Object.keys(loc.pegs).length > 0) {
+      pegsSummary = `<div style="font-size:0.7em; color:#aaa; margin-top:2px;">` + 
+        Object.entries(loc.pegs).map(([k, v]) => `${k.substring(0,4)}:${v}`).join(" | ") + 
+        `</div>`;
+    }
+
     paperDollHTML += `
       <div class="doll-slot ${areaClass} loc-${loc.state}">
         <div class="loc-name">${loc.name} ${loc.isVital ? "💔" : ""}</div>
         <div class="loc-armor">🛡️ Arm: ${loc.armor}</div>
         <div class="loc-status">${loc.state.toUpperCase()}</div>
+        ${pegsSummary}
       </div>
     `;
   });
@@ -429,24 +540,39 @@ function renderCard(char, elId) {
   el.style.borderColor = isActive ? "#e9c46a" : "var(--border)";
 
   const convertBaseButton = char.actions.base > 0
-    ? `<button class="btn" style="padding:2px 6px;font-size:0.7em;" onclick="convertAction('base','quick')">Base → Quick</button>`
+    ? `<button class="btn" style="padding:2px 6px;font-size:0.7em;" onclick="convertAction('base','quick')">Base → 2x Quick</button>`
     : "";
   const convertQuickButton = char.actions.quick >= 2
-    ? `<button class="btn" style="padding:2px 6px;font-size:0.7em;" onclick="convertAction('quick','base')">Quick → Base</button>`
+    ? `<button class="btn" style="padding:2px 6px;font-size:0.7em;" onclick="convertAction('quick','base')">2x Quick → Base</button>`
     : "";
+
+  const scaleStatVal = char.equippedWeapon.scaling === 'strength' ? char.getEffectiveStat('strength') : char.equippedWeapon.scaling === 'finesse' ? char.getEffectiveStat('finesse') : 0;
 
   el.innerHTML = `
     <h2>${char.name} ${char.isDead ? "☠️ (DEAD)" : char.isUnconscious ? "💤 (UNCONSCIOUS)" : ""} ${isActive ? "⭐" : ""}</h2>
     <div style="font-size:0.85em; margin-bottom:8px; line-height:1.5;">
-      <strong>Weapon:</strong> ${char.equippedWeapon.name} (d${char.equippedWeapon.diceSides}+${char.equippedWeapon.scaling === 'strength' ? char.substats.strength : char.equippedWeapon.scaling === 'finesse' ? char.substats.finesse : 0}, AP:${char.equippedWeapon.ap})<br>
+      <strong>Weapon:</strong> ${char.equippedWeapon.name} (d${char.equippedWeapon.diceSides}+${scaleStatVal}, AP:${char.equippedWeapon.ap})<br>
       <strong>Stats:</strong> Toughness: ${char.baseToughness} | HC: ${char.baseHitClass} | Wound Cap: ${char.currentWoundCap}<br>
+      <strong>Speed:</strong> ${char.getMovementSpeed()}m (5ft) per Quick Action<br>
       <strong>Actions:</strong> Base [${char.actions.base}] | Quick [${char.actions.quick}]<br>
-      <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+      <div style="margin-top:6px; display:flex; gap:4px; flex-wrap:wrap;">
         ${convertBaseButton}
         ${convertQuickButton}
       </div>
+      <div style="margin-top:4px;">
+        <strong>Wounds:</strong> Grazes (${char.totalGrazes}) | Injuries (${char.totalInjuries}) ${char.statuses.brokenDefense ? "| 💥 [DEFENSE BROKEN]" : ""}
+      </div>
     </div>
+
+    <h4>Anatomical Status Map</h4>
     ${paperDollHTML}
+
+    <h4 style="margin-top:10px;">Combat Actions</h4>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      <button class="btn" ${!isActive || char.isUnconscious || char.isDead ? "disabled" : ""} onclick="executeAttack(false)">⚔️ Base Attack (d20)</button>
+      <button class="btn" ${!isActive || char.isUnconscious || char.isDead ? "disabled" : ""} onclick="executeAttack(true)">⚡ Quick Attack (d10)</button>
+      <button class="btn" ${!isActive || char.isUnconscious || char.isDead ? "disabled" : ""} onclick="executeBreak()">🛡️ Break Stance</button>
+    </div>
   `;
 }
 
