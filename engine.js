@@ -64,7 +64,7 @@ class Fighter {
     let activeLegs = 0;
     if (this.bodyPlan[5].state !== "injured" && this.bodyPlan[5].state !== "destroyed") activeLegs++;
     if (this.bodyPlan[6].state !== "injured" && this.bodyPlan[6].state !== "destroyed") activeLegs++;
-    return activeLegs * 5; // feet; 5 ft per functional leg
+    return activeLegs * 10; // convert the previous 3 m per functional leg to approximately 10 ft
   }
 
   get totalGrazes() {
@@ -153,28 +153,49 @@ function calculateTotalXP(id) {
 }
 
 function autoDistributePegs(id, key, totalVal, validLocs) {
-  // Read existing manual overrides if present, otherwise calculate auto-peg
-  let allocated = 0;
   const inputs = validLocs.map(locId => document.getElementById(`f${id}-peg-${key}-${locId}`));
-  const hasExistingValues = inputs.some(i => i && i.value !== "");
+  const hasExistingValues = inputs.some(input => input && input.value !== "");
 
-  if (hasExistingValues) return; // Keep manual user inputs
+  if (hasExistingValues) {
+    // Preserve manual allocations. If the stat ceiling changed, adjust only the
+    // excess or newly required points instead of wiping the player's choices.
+    let total = inputs.reduce((sum, input) => sum + (input && input.value !== "" ? (parseInt(input.value) || 0) : 0), 0);
+    if (total > totalVal) {
+      let excess = total - totalVal;
+      for (let i = validLocs.length - 1; i >= 0 && excess > 0; i--) {
+        const input = document.getElementById(`f${id}-peg-${key}-${validLocs[i]}`);
+        if (!input) continue;
+        const value = Math.max(0, parseInt(input.value) || 0);
+        const remove = Math.min(value, excess);
+        input.value = String(value - remove);
+        excess -= remove;
+      }
+    } else if (total < totalVal) {
+      let remaining = totalVal - total;
+      let index = 0;
+      while (remaining > 0 && validLocs.length > 0) {
+        const input = document.getElementById(`f${id}-peg-${key}-${validLocs[index % validLocs.length]}`);
+        if (input) input.value = String((parseInt(input.value) || 0) + 1);
+        remaining--;
+        index++;
+      }
+    }
+    return;
+  }
 
-  // Distribute points round-robin across valid locations by default
+  // Initial default: distribute points round-robin across valid locations.
   let remaining = totalVal;
   let idx = 0;
   const distribution = {};
-  validLocs.forEach(l => distribution[l] = 0);
-
+  validLocs.forEach(locId => distribution[locId] = 0);
   while (remaining > 0 && validLocs.length > 0) {
     distribution[validLocs[idx % validLocs.length]]++;
     remaining--;
     idx++;
   }
-
   validLocs.forEach(locId => {
-    const el = document.getElementById(`f${id}-peg-${key}-${locId}`);
-    if (el) el.value = distribution[locId];
+    const input = document.getElementById(`f${id}-peg-${key}-${locId}`);
+    if (input) input.value = String(distribution[locId]);
   });
 }
 
@@ -250,7 +271,7 @@ function buildCreatorUI(resetFighterId = null) {
   // Primary-stat edits rebuild the generated controls. Keep the user's current
   // allocations instead of silently resetting both characters.
   const savedStats = {};
-  if (preserveExisting) {
+  {
     [1, 2].forEach(id => {
       savedStats[id] = {};
       if (id !== resetFighterId) {
@@ -294,11 +315,16 @@ buildCreatorUI();
 
 function validateFighterSetup(id) {
   const errors = [];
-  const primaries = {
-    body: Math.max(0, parseInt(document.getElementById(`f${id}-p-body`)?.value) || 0),
-    nerve: Math.max(0, parseInt(document.getElementById(`f${id}-p-nerve`)?.value) || 0),
-    character: Math.max(0, parseInt(document.getElementById(`f${id}-p-char`)?.value) || 0)
-  };
+  const primaries = {};
+  [["body", "Body"], ["nerve", "Nerve"], ["character", "Character"]].forEach(([key, label]) => {
+    const raw = Number(document.getElementById(`f${id}-p-${key}`)?.value ?? 0);
+    if (!Number.isInteger(raw) || raw < 0) {
+      errors.push(`${label} level must be a non-negative whole number.`);
+      primaries[key] = 0;
+    } else {
+      primaries[key] = raw;
+    }
+  });
 
   subStatDefs.forEach(stat => {
     const input = document.getElementById(`f${id}-s-${stat.key}`);
@@ -309,10 +335,16 @@ function validateFighterSetup(id) {
     }
 
     if (!stat.isUnpegged) {
-      const sum = stat.validLocs.reduce((total, locId) => {
+      const allocations = stat.validLocs.map(locId => {
         const el = document.getElementById(`f${id}-peg-${stat.key}-${locId}`);
-        return total + (el && el.value !== "" ? Number(el.value) : 0);
-      }, 0);
+        return { locId, value: el && el.value !== "" ? Number(el.value) : 0 };
+      });
+      allocations.forEach(allocation => {
+        if (!Number.isInteger(allocation.value) || allocation.value < 0) {
+          errors.push(`${stat.label} allocation at location ${locationNames[allocation.locId]} must be a non-negative whole number.`);
+        }
+      });
+      const sum = allocations.reduce((total, allocation) => total + allocation.value, 0);
       if (!Number.isInteger(sum) || sum !== value) {
         errors.push(`${stat.label} has ${sum} pegged point(s), but its value is ${value}.`);
       }
