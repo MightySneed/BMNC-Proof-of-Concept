@@ -752,6 +752,7 @@ function executeAttack(isQuick = false) {
       defender.isDead = true;
       defender.actions.base = 0;
       defender.actions.quick = 0;
+      defender.actions.bonusQuick = 0;
       log(`☠️ Fatal injury: ${defender.name}'s vital location is destroyed.`, "log-damage");
     }
   }
