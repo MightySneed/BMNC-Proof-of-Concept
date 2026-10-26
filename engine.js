@@ -359,7 +359,7 @@ function startBattle() {
     validateFighterSetup(id).map(error => `Fighter ${id}: ${error}`)
   );
   if (validationErrors.length) {
-    alert("Please fix the character setup before combat:\\n\\n" + validationErrors.slice(0, 12).join("\\n"));
+    alert("Please fix the character setup before combat:\n\n" + validationErrors.slice(0, 12).join("\n"));
     return;
   }
 
