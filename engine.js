@@ -93,7 +93,7 @@ class Fighter {
   }
 }
 
-let f1, f2, combatQueue = [], activeIndex = 0, currentRound = 1;
+let f1, f2, combatQueue = [], activeIndex = 0, currentRound = 1, combatEnded = false;
 
 function d20() { return Math.floor(Math.random() * 20) + 1; }
 function d10() { return Math.floor(Math.random() * 10) + 1; }
@@ -246,17 +246,19 @@ function renderPeggingTable(id) {
   });
 }
 
-function buildCreatorUI(preserveExisting = true) {
+function buildCreatorUI(resetFighterId = null) {
   // Primary-stat edits rebuild the generated controls. Keep the user's current
   // allocations instead of silently resetting both characters.
   const savedStats = {};
   if (preserveExisting) {
     [1, 2].forEach(id => {
       savedStats[id] = {};
-      subStatDefs.forEach(stat => {
-        const el = document.getElementById(`f${id}-s-${stat.key}`);
-        if (el) savedStats[id][stat.key] = parseInt(el.value) || 0;
-      });
+      if (id !== resetFighterId) {
+        subStatDefs.forEach(stat => {
+          const el = document.getElementById(`f${id}-s-${stat.key}`);
+          if (el) savedStats[id][stat.key] = parseInt(el.value) || 0;
+        });
+      }
     });
   }
 
@@ -290,7 +292,44 @@ function buildCreatorUI(preserveExisting = true) {
 
 buildCreatorUI();
 
+function validateFighterSetup(id) {
+  const errors = [];
+  const primaries = {
+    body: Math.max(0, parseInt(document.getElementById(`f${id}-p-body`)?.value) || 0),
+    nerve: Math.max(0, parseInt(document.getElementById(`f${id}-p-nerve`)?.value) || 0),
+    character: Math.max(0, parseInt(document.getElementById(`f${id}-p-char`)?.value) || 0)
+  };
+
+  subStatDefs.forEach(stat => {
+    const input = document.getElementById(`f${id}-s-${stat.key}`);
+    const value = input ? Number(input.value) : 0;
+    const max = stat.isWoundCap ? Math.floor(primaries.body / 2) : primaries[stat.parent];
+    if (!Number.isInteger(value) || value < 0 || value > max) {
+      errors.push(`${stat.label} must be a whole number between 0 and ${max}.`);
+    }
+
+    if (!stat.isUnpegged) {
+      const sum = stat.validLocs.reduce((total, locId) => {
+        const el = document.getElementById(`f${id}-peg-${stat.key}-${locId}`);
+        return total + (el && el.value !== "" ? Number(el.value) : 0);
+      }, 0);
+      if (!Number.isInteger(sum) || sum !== value) {
+        errors.push(`${stat.label} has ${sum} pegged point(s), but its value is ${value}.`);
+      }
+    }
+  });
+  return errors;
+}
+
 function startBattle() {
+  const validationErrors = [1, 2].flatMap(id =>
+    validateFighterSetup(id).map(error => `Fighter ${id}: ${error}`)
+  );
+  if (validationErrors.length) {
+    alert("Please fix the character setup before combat:\\n\\n" + validationErrors.slice(0, 12).join("\\n"));
+    return;
+  }
+
   function readFighter(id) {
     const name = document.getElementById(`f${id}-name`)?.value || `Fighter ${id}`;
     const primaries = {
@@ -329,7 +368,7 @@ function startBattle() {
       });
     });
 
-    return new Fighter(name, primaries, substats, weapon, armorMap, pegAllocations);
+    return new Fighter(name, primaries, substats, weapon, armorMap, pegAllocations, id === 1 ? "A" : "B");
   }
 
   try {
@@ -796,4 +835,82 @@ function updateUI() {
   if (endButton) endButton.disabled = combatEnded || !active;
   const resetButton = document.getElementById("resetCombatButton");
   if (resetButton) resetButton.disabled = !f1 || !f2;
+}
+
+function loadCharacterPreset(id, requestedPresetId = null) {
+  if (typeof CHARACTER_PRESETS === "undefined") {
+    alert("Character presets could not be loaded.");
+    return;
+  }
+  const selector = document.getElementById(`f${id}-character-preset`);
+  const presetId = requestedPresetId || selector?.value;
+  const preset = CHARACTER_PRESETS[presetId];
+  if (!preset) {
+    alert("Choose a valid character preset first.");
+    return;
+  }
+  if (selector) selector.value = presetId;
+
+  document.getElementById(`f${id}-name`).value = preset.name;
+  document.getElementById(`f${id}-p-body`).value = preset.primaries.body;
+  document.getElementById(`f${id}-p-nerve`).value = preset.primaries.nerve;
+  document.getElementById(`f${id}-p-char`).value = preset.primaries.character;
+
+  // Rebuild only this fighter's stat controls. The other character's values stay intact.
+  buildCreatorUI(id);
+  subStatDefs.forEach(stat => {
+    const input = document.getElementById(`f${id}-s-${stat.key}`);
+    if (input) input.value = preset.substats[stat.key] ?? 0;
+  });
+
+  for (let locId = 1; locId <= 6; locId++) {
+    const armorInput = document.getElementById(`f${id}-ar-${locId}`);
+    if (armorInput) armorInput.value = preset.armor[locId] ?? 0;
+  }
+
+  calculateTotalXP(id);
+  subStatDefs.filter(stat => !stat.isUnpegged).forEach(stat => {
+    stat.validLocs.forEach(locId => {
+      const input = document.getElementById(`f${id}-peg-${stat.key}-${locId}`);
+      if (!input) return;
+      input.value = String(preset.pegs?.[locId]?.[stat.key] ?? 0);
+    });
+    validatePegRow(id, stat.key, preset.substats[stat.key] ?? 0, stat.validLocs);
+  });
+  calculateTotalXP(id);
+  logIfCombatPresetApplied(preset.name);
+}
+
+function logIfCombatPresetApplied(name) {
+  // Keep the creator flow quiet; presets are acknowledged directly in the setup screen.
+  const status = document.getElementById("presetStatus");
+  if (status) status.textContent = `Loaded preset: ${name}`;
+}
+
+function loadWeaponPreset(id, requestedPresetId = null) {
+  if (typeof WEAPON_PRESETS === "undefined") {
+    alert("Weapon presets could not be loaded.");
+    return;
+  }
+  const selector = document.getElementById(`f${id}-weapon-preset`);
+  const presetId = requestedPresetId || selector?.value;
+  const preset = WEAPON_PRESETS[presetId];
+  if (!preset) {
+    alert("Choose a valid weapon preset first.");
+    return;
+  }
+  if (selector) selector.value = presetId;
+  document.getElementById(`f${id}-w-name`).value = preset.name;
+  document.getElementById(`f${id}-w-dice`).value = preset.diceSides;
+  document.getElementById(`f${id}-w-scale`).value = preset.scaling;
+  document.getElementById(`f${id}-w-flat`).value = preset.flatDmg;
+  document.getElementById(`f${id}-w-ap`).value = preset.ap;
+}
+
+/* Load sensible starter matchups while keeping every field editable. */
+if (typeof CHARACTER_PRESETS !== "undefined" && typeof WEAPON_PRESETS !== "undefined") {
+  loadCharacterPreset(1, "guts");
+  loadCharacterPreset(2, "duelist");
+  loadWeaponPreset(1, "greatsword");
+  loadWeaponPreset(2, "sabre");
 }
