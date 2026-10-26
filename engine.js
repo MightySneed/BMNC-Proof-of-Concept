@@ -35,7 +35,7 @@ class Fighter {
     });
 
     // 2. Initialize actions and combat state SECOND
-    this.actions = { base: 1, quick: this.getEffectiveStat('quickActions') };
+    this.actions = { base: 1, quick: this.getEffectiveStat('quickActions'), bonusQuick: 0 };
     this.isUnconscious = false;
     this.isDead = false;
     this.statuses = { brokenDefense: false };
@@ -78,6 +78,7 @@ class Fighter {
   resetTurnActions() {
     this.actions.base = 1;
     this.actions.quick = this.getEffectiveStat('quickActions');
+    this.actions.bonusQuick = 0;
   }
 
   resetFullState() {
@@ -421,8 +422,12 @@ function isCombatCapable(char) {
   return !!char && !char.isDead && !char.isUnconscious;
 }
 
+function getQuickActionsRemaining(char) {
+  return (char?.actions?.quick || 0) + (char?.actions?.bonusQuick || 0);
+}
+
 function hasRemainingActions(char) {
-  return isCombatCapable(char) && (char.actions.base > 0 || char.actions.quick > 0);
+  return isCombatCapable(char) && (char.actions.base > 0 || getQuickActionsRemaining(char) > 0);
 }
 
 function checkEncounterComplete() {
@@ -587,12 +592,17 @@ function convertAction(fromType, toType) {
   if (fromType === "base" && toType === "quick") {
     if (char.actions.base >= 1) {
       char.actions.base -= 1;
-      char.actions.quick += 2;
+      // Conversion-created quick actions are separated from stat-granted actions.
+      char.actions.bonusQuick += 2;
       log(`⚡ ${char.name} converts 1 Base Action into 2 Quick Actions.`);
     }
   } else if (fromType === "quick" && toType === "base") {
-    if (char.actions.quick >= 2) {
-      char.actions.quick -= 2;
+    if (getQuickActionsRemaining(char) >= 2) {
+      let cost = 2;
+      const fromBonus = Math.min(char.actions.bonusQuick, cost);
+      char.actions.bonusQuick -= fromBonus;
+      cost -= fromBonus;
+      char.actions.quick = Math.max(0, char.actions.quick - cost);
       char.actions.base += 1;
       log(`⚡ ${char.name} converts 2 Quick Actions into 1 Base Action.`);
     }
@@ -656,11 +666,20 @@ function executeAttack(isQuick = false) {
   }
 
   const actionType = isQuick ? "quick" : "base";
-  if (attacker.actions[actionType] <= 0) {
-    log(`⚠️ No ${actionType} actions remaining.`);
-    return;
+  if (isQuick) {
+    if (getQuickActionsRemaining(attacker) <= 0) {
+      log("⚠️ No Quick Actions remaining.");
+      return;
+    }
+    if (attacker.actions.bonusQuick > 0) attacker.actions.bonusQuick--;
+    else attacker.actions.quick--;
+  } else {
+    if (attacker.actions.base <= 0) {
+      log("⚠️ No Base Actions remaining.");
+      return;
+    }
+    attacker.actions.base--;
   }
-  attacker.actions[actionType]--;
 
   log(`💥 ${attacker.name} attacks ${defender.name} with [${attacker.equippedWeapon.name}] (${actionType.toUpperCase()})...`);
 
@@ -714,6 +733,9 @@ function executeAttack(isQuick = false) {
     }
 
     applyLocationHit(location, newTier);
+    // A newly disabled location immediately removes its pegged stat-based quick slots.
+    // Converted Quick Actions are tracked separately and are not erased by that loss.
+    defender.actions.quick = Math.min(defender.actions.quick, defender.getEffectiveStat("quickActions"));
     log(`🩸 Result: ${location.name} receives a ${newTier.toUpperCase()} hit. Location state: ${location.state.toUpperCase()} (graze count ${location.grazeCount}, injury count ${location.injuryCount}).`, "log-damage");
 
     if (location.isVital && location.state === "destroyed") {
@@ -768,7 +790,7 @@ function renderInitiativeTracker() {
         const isNext = idx === nextIdx && !isActive && !combatEnded;
         const status = char.isDead ? "DEAD" : char.isUnconscious ? "UNCONSCIOUS" : isActive ? "ACTING NOW" : isNext ? "UP NEXT" : "IN QUEUE";
         const base = char.actions.base;
-        const quick = char.actions.quick;
+        const quick = getQuickActionsRemaining(char);
         return `
           <div class="initiative-entry ${isActive ? "is-active" : ""} ${isNext ? "is-next" : ""} ${!isCombatCapable(char) ? "is-out" : ""}">
             <div class="initiative-rank">${idx + 1}</div>
@@ -791,6 +813,7 @@ function renderCard(char, elId) {
 
   const isActive = combatQueue[activeIndex] === char && !combatEnded;
   const canAct = isActive && isCombatCapable(char);
+  const quickRemaining = getQuickActionsRemaining(char);
   const slotMap = { 1: "head", 2: "torso", 3: "larm", 4: "rarm", 5: "lleg", 6: "rleg", 7: "aura" };
 
   let paperDollHTML = `<div class="paper-doll">`;
@@ -817,7 +840,7 @@ function renderCard(char, elId) {
       ? char.getEffectiveStat("finesse") : 0;
   const convertBaseButton = canAct && char.actions.base > 0
     ? `<button class="btn btn-small" onclick="convertAction('base','quick')">Base → 2 Quick</button>` : "";
-  const convertQuickButton = canAct && char.actions.quick >= 2
+  const convertQuickButton = canAct && quickRemaining >= 2
     ? `<button class="btn btn-small" onclick="convertAction('quick','base')">2 Quick → Base</button>` : "";
 
   el.innerHTML = `
@@ -832,6 +855,7 @@ function renderCard(char, elId) {
       <strong>Weapon:</strong> ${escapeHtml(char.equippedWeapon.name)} (d${char.equippedWeapon.diceSides} + ${scaleStatVal} stat + ${char.equippedWeapon.flatDmg} flat, AP ${char.equippedWeapon.ap})<br>
       <strong>Stats:</strong> Toughness ${char.baseToughness} · HC ${char.baseHitClass} · Wound Cap ${char.currentWoundCap}<br>
       <strong>Movement:</strong> ${char.getMovementSpeed()} ft per Quick Action<br>
+      <strong>Actions:</strong> Base ${char.actions.base} · Quick ${quickRemaining}<br>
       <strong>Wounds:</strong> Grazes ${char.totalGrazes} · Injuries ${char.totalInjuries} ${char.statuses.brokenDefense ? "· 💥 DEFENCE BROKEN" : ""}
       <div class="action-conversions">${convertBaseButton}${convertQuickButton}</div>
     </div>
@@ -842,7 +866,7 @@ function renderCard(char, elId) {
     <h4 class="combat-actions-heading">Combat actions</h4>
     <div class="combat-actions">
       <button class="btn" ${!canAct || char.actions.base <= 0 ? "disabled" : ""} onclick="executeAttack(false)">⚔️ Base attack · d20</button>
-      <button class="btn" ${!canAct || char.actions.quick <= 0 ? "disabled" : ""} onclick="executeAttack(true)">⚡ Quick attack · d10</button>
+      <button class="btn" ${!canAct || quickRemaining <= 0 ? "disabled" : ""} onclick="executeAttack(true)">⚡ Quick attack · d10</button>
       <button class="btn" ${!canAct || char.actions.base <= 0 ? "disabled" : ""} onclick="executeBreak()">🛡️ Break stance · Base</button>
     </div>`;
 }
