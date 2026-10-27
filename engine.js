@@ -341,7 +341,8 @@ function validateFighterSetup(id) {
   const errors = [];
   const primaries = {};
   [["body", "Body"], ["nerve", "Nerve"], ["character", "Character"]].forEach(([key, label]) => {
-    const raw = Number(document.getElementById(`f${id}-p-${key}`)?.value ?? 0);
+    const inputKey = key === "character" ? "char" : key;
+    const raw = Number(document.getElementById(`f${id}-p-${inputKey}`)?.value ?? 0);
     if (!Number.isInteger(raw) || raw < 0) {
       errors.push(`${label} domain must be a non-negative whole number.`);
       primaries[key] = 0;
