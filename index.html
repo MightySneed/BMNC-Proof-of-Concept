@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Tactical RPG Engine</title>
+  <title>BMNC | Character Workshop</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -10,13 +10,21 @@
 <div id="app">
   <!-- SETUP SCREEN -->
   <div id="setupScreen">
-    <h1>⚔️ Tactical RPG — Point-Buy Creator</h1>
-    <p class="intro-copy">Load a starter character and weapon, then edit any value. These presets are local data, not fixed templates.</p>
+    <h1>BMNC <span class="title-divider">/</span> Character Workshop</h1>
+    <p class="intro-copy">Build and save characters, tune their point-buy, and export a portable file. JSON is the editable interchange format; TXT is a readable sheet.</p>
+    <div class="rules-note">
+      <strong>Point-buy:</strong> Domain → ability → skill. Each level costs its level plus all earlier levels. Ordinary abilities cap at their domain; skills cap at their chosen ability. Toughness, Wound Capacity, HC, Action Capacity and Willpower are unpegged, cost 2× XP and cap at half their domain (round down).
+      <span class="rules-note-sub">Race/body-plan tags are saved, but racial rules are not yet applied in combat. The current prototype uses a six-location physical hit table.</span>
+    </div>
+    <div class="schema-toolbar">
+      <a class="btn btn-small" href="data/character-schema.json" download>Download character schema</a>
+      <a class="btn btn-small" href="examples/kledd.json" download>Download Kledd example</a>
+    </div>
     <p id="presetStatus" class="preset-status" aria-live="polite">Starter presets are ready to load.</p>
     <div class="grid-2">
       <!-- Fighter 1 Setup -->
       <div class="card">
-        <h3>Fighter 1 Configuration <span id="f1-xp" style="font-size:0.8em; color:#e9c46a; float:right;">XP: 0</span></h3>
+        <h3>Fighter 1 <span id="f1-xp" class="xp-badge">XP spent: 0</span></h3>
         <div class="preset-control">
           <label for="f1-character-preset">Character preset</label>
           <select id="f1-character-preset">
@@ -27,15 +35,29 @@
           </select>
           <button class="btn btn-small" onclick="loadCharacterPreset(1)">Load character</button>
         </div>
-        <label class="name-field" for="f1-name">Name <input type="text" id="f1-name" value="Guts"></label>
+        <div class="identity-fields">
+          <label for="f1-name">Name <input type="text" id="f1-name" value="Guts"></label>
+          <label for="f1-race">Race / body-plan tag <input type="text" id="f1-race" value="Human" placeholder="Human, Goblin, Golem…"></label>
+        </div>
+        <div class="character-file-tools" aria-label="Character file tools">
+          <button class="btn btn-small" type="button" onclick="exportCharacter(1, 'json')">Export JSON</button>
+          <button class="btn btn-small" type="button" onclick="exportCharacter(1, 'txt')">Export TXT</button>
+          <label class="btn btn-small import-trigger" for="f1-import-file">Import JSON</label>
+          <input class="visually-hidden-input" type="file" id="f1-import-file" accept=".json,application/json" onchange="importCharacterFile(1, this)">
+        </div>
         
-        <h4>Primary Stats</h4>
-        <div class="stat-row">Body Level: <input type="number" id="f1-p-body" value="2" min="0" onchange="buildCreatorUI()"></div>
-        <div class="stat-row">Nerve Level: <input type="number" id="f1-p-nerve" value="2" min="0" onchange="buildCreatorUI()"></div>
-        <div class="stat-row">Character Level: <input type="number" id="f1-p-char" value="1" min="0" onchange="buildCreatorUI()"></div>
+        <h4>Domains</h4>
+        <div class="stat-row">Body domain: <input type="number" id="f1-p-body" value="2" min="0" onchange="buildCreatorUI()"></div>
+        <div class="stat-row">Nerve domain: <input type="number" id="f1-p-nerve" value="2" min="0" onchange="buildCreatorUI()"></div>
+        <div class="stat-row">Character domain: <input type="number" id="f1-p-char" value="1" min="0" onchange="buildCreatorUI()"></div>
 
-        <h4>Allocate Sub-Stats</h4>
+        <h4>Abilities (sub-stats)</h4>
+        <p class="section-help">Every ability has a level capped by its domain. Special stats are priced separately and cannot be pegged.</p>
         <div id="f1-substats"></div>
+        <h4>Skills</h4>
+        <p class="section-help">Choose a domain and one of its abilities, then give the skill a level no higher than that ability.</p>
+        <div id="f1-skills-editor" class="skills-editor"></div>
+        <button class="btn btn-small add-skill-button" type="button" onclick="addSkillRow(1)">+ Add skill</button>
 
         <h4>Location Armor Settings</h4>
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:0.8em;">
@@ -47,7 +69,7 @@
           <div>R.Leg: <input type="number" id="f1-ar-6" value="1" style="width:35px;"></div>
         </div>
 
-        <h4>Stat Pegging (Distribute Sub-Stats to Locations)</h4>
+        <h4>Stat pegging (points lost when a location is disabled)</h4>
         <div id="f1-pegging-container"></div>
 
         <h4>Equipped Weapon</h4>
@@ -73,13 +95,13 @@
             </select>
           </div>
           <div>Flat Dmg: <input type="number" id="f1-w-flat" value="2" style="width:40px;"></div>
-          <div>Armor Pen (AP): <input type="number" id="f1-w-ap" value="3" style="width:40px;"></div>
+          <div>Pen: <input type="number" id="f1-w-pen" value="3" style="width:40px;"></div>
         </div>
       </div>
 
       <!-- Fighter 2 Setup -->
       <div class="card">
-        <h3>Fighter 2 Configuration <span id="f2-xp" style="font-size:0.8em; color:#e9c46a; float:right;">XP: 0</span></h3>
+        <h3>Fighter 2 <span id="f2-xp" class="xp-badge">XP spent: 0</span></h3>
         <div class="preset-control">
           <label for="f2-character-preset">Character preset</label>
           <select id="f2-character-preset">
@@ -90,15 +112,29 @@
           </select>
           <button class="btn btn-small" onclick="loadCharacterPreset(2)">Load character</button>
         </div>
-        <label class="name-field" for="f2-name">Name <input type="text" id="f2-name" value="Agile Duelist"></label>
+        <div class="identity-fields">
+          <label for="f2-name">Name <input type="text" id="f2-name" value="Agile Duelist"></label>
+          <label for="f2-race">Race / body-plan tag <input type="text" id="f2-race" value="Human" placeholder="Human, Goblin, Golem…"></label>
+        </div>
+        <div class="character-file-tools" aria-label="Character file tools">
+          <button class="btn btn-small" type="button" onclick="exportCharacter(2, 'json')">Export JSON</button>
+          <button class="btn btn-small" type="button" onclick="exportCharacter(2, 'txt')">Export TXT</button>
+          <label class="btn btn-small import-trigger" for="f2-import-file">Import JSON</label>
+          <input class="visually-hidden-input" type="file" id="f2-import-file" accept=".json,application/json" onchange="importCharacterFile(2, this)">
+        </div>
 
-        <h4>Primary Stats</h4>
-        <div class="stat-row">Body Level: <input type="number" id="f2-p-body" value="0" min="0" onchange="buildCreatorUI()"></div>
-        <div class="stat-row">Nerve Level: <input type="number" id="f2-p-nerve" value="3" min="0" onchange="buildCreatorUI()"></div>
-        <div class="stat-row">Character Level: <input type="number" id="f2-p-char" value="1" min="0" onchange="buildCreatorUI()"></div>
+        <h4>Domains</h4>
+        <div class="stat-row">Body domain: <input type="number" id="f2-p-body" value="0" min="0" onchange="buildCreatorUI()"></div>
+        <div class="stat-row">Nerve domain: <input type="number" id="f2-p-nerve" value="3" min="0" onchange="buildCreatorUI()"></div>
+        <div class="stat-row">Character domain: <input type="number" id="f2-p-char" value="1" min="0" onchange="buildCreatorUI()"></div>
 
-        <h4>Allocate Sub-Stats</h4>
+        <h4>Abilities (sub-stats)</h4>
+        <p class="section-help">Every ability has a level capped by its domain. Special stats are priced separately and cannot be pegged.</p>
         <div id="f2-substats"></div>
+        <h4>Skills</h4>
+        <p class="section-help">Choose a domain and one of its abilities, then give the skill a level no higher than that ability.</p>
+        <div id="f2-skills-editor" class="skills-editor"></div>
+        <button class="btn btn-small add-skill-button" type="button" onclick="addSkillRow(2)">+ Add skill</button>
 
         <h4>Location Armor Settings</h4>
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:0.8em;">
@@ -110,7 +146,7 @@
           <div>R.Leg: <input type="number" id="f2-ar-6" value="1" style="width:35px;"></div>
         </div>
 
-        <h4>Stat Pegging (Distribute Sub-Stats to Locations)</h4>
+        <h4>Stat pegging (points lost when a location is disabled)</h4>
         <div id="f2-pegging-container"></div>
 
         <h4>Equipped Weapon</h4>
@@ -136,7 +172,7 @@
             </select>
           </div>
           <div>Flat Dmg: <input type="number" id="f2-w-flat" value="1" style="width:40px;"></div>
-          <div>Armor Pen (AP): <input type="number" id="f2-w-ap" value="1" style="width:40px;"></div>
+          <div>Pen: <input type="number" id="f2-w-pen" value="1" style="width:40px;"></div>
         </div>
       </div>
     </div>

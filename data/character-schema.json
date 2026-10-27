@@ -1,0 +1,303 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BMNC Character File",
+  "description": "Version 1 character interchange format. Cross-field point-buy caps and pegging totals are validated by the Character Workshop.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "name",
+    "primaries",
+    "substats",
+    "weapon"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "bmnc.character"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "race": {
+      "type": "string",
+      "description": "Descriptive race/body-plan tag; racial rules are not yet applied by the prototype."
+    },
+    "team": {
+      "enum": [
+        "A",
+        "B"
+      ]
+    },
+    "primaries": {
+      "type": "object",
+      "required": [
+        "body",
+        "nerve",
+        "character"
+      ],
+      "properties": {
+        "body": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nerve": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "character": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "substats": {
+      "type": "object",
+      "required": [
+        "strength",
+        "toughness",
+        "con",
+        "woundCap",
+        "dexterity",
+        "initiative",
+        "hc",
+        "finesse",
+        "actionCapacity",
+        "gumption",
+        "charisma",
+        "willpower"
+      ],
+      "properties": {
+        "strength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toughness": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "con": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "woundCap": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dexterity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "initiative": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hc": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finesse": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actionCapacity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gumption": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "charisma": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "willpower": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "array",
+      "description": "Each skill entry chooses a domain and an ability. The skill level must not exceed that ability's level.",
+      "items": {
+        "$ref": "#/$defs/skill"
+      }
+    },
+    "armor": {
+      "type": "object",
+      "description": "Armour by physical location: 1 Head, 2 Torso, 3 Left Arm, 4 Right Arm, 5 Left Leg, 6 Right Leg. Omit to default to zero armour.",
+      "properties": {
+        "1": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "2": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "3": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "4": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "5": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "6": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "pegs": {
+      "type": "object",
+      "description": "Optional. If omitted, the builder auto-distributes pegged ability points among legal locations. Location keys: 1 Head, 2 Torso, 3 Left Arm, 4 Right Arm, 5 Left Leg, 6 Right Leg, 7 Aura/System.",
+      "properties": {
+        "1": {
+          "$ref": "#/$defs/pegLocation"
+        },
+        "2": {
+          "$ref": "#/$defs/pegLocation"
+        },
+        "3": {
+          "$ref": "#/$defs/pegLocation"
+        },
+        "4": {
+          "$ref": "#/$defs/pegLocation"
+        },
+        "5": {
+          "$ref": "#/$defs/pegLocation"
+        },
+        "6": {
+          "$ref": "#/$defs/pegLocation"
+        },
+        "7": {
+          "$ref": "#/$defs/pegLocation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "weapon": {
+      "type": "object",
+      "required": [
+        "name",
+        "diceSides",
+        "scaling",
+        "flatDmg",
+        "pen"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "diceSides": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "scaling": {
+          "enum": [
+            "strength",
+            "finesse",
+            "none"
+          ]
+        },
+        "flatDmg": {
+          "type": "integer"
+        },
+        "pen": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "skill": {
+      "type": "object",
+      "required": [
+        "name",
+        "domain",
+        "ability",
+        "level"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domain": {
+          "enum": [
+            "body",
+            "nerve",
+            "character"
+          ]
+        },
+        "ability": {
+          "enum": [
+            "strength",
+            "con",
+            "dexterity",
+            "initiative",
+            "finesse",
+            "gumption",
+            "charisma"
+          ]
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "pegLocation": {
+      "type": "object",
+      "properties": {
+        "strength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "con": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dexterity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "initiative": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finesse": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gumption": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "charisma": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
