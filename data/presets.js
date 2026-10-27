@@ -71,9 +71,9 @@ const CHARACTER_PRESETS = {
 };
 
 const WEAPON_PRESETS = {
-  greatsword: { name: "Greatsword", diceSides: 8, scaling: "strength", flatDmg: 2, pen: 3 },
-  sabre: { name: "Sabre", diceSides: 6, scaling: "finesse", flatDmg: 1, pen: 1 },
-  unarmed: { name: "Unarmed", diceSides: 4, scaling: "none", flatDmg: 0, pen: 0 },
-  scrapClub: { name: "Scrap Club", diceSides: 6, scaling: "strength", flatDmg: 0, pen: 0 },
-  spear: { name: "Spear", diceSides: 8, scaling: "strength", flatDmg: 1, pen: 1 }
+  greatsword: { name: "Greatsword", diceSides: 8, scaling: "strength", flatDmg: 2, pen: 3, skill: "Fencing" },
+  sabre: { name: "Sabre", diceSides: 6, scaling: "finesse", flatDmg: 1, pen: 1, skill: "Fencing" },
+  unarmed: { name: "Unarmed", diceSides: 4, scaling: "none", flatDmg: 0, pen: 0, skill: "Martial Arts" },
+  scrapClub: { name: "Scrap Club", diceSides: 6, scaling: "strength", flatDmg: 0, pen: 0, skill: "Fencing" },
+  spear: { name: "Spear", diceSides: 8, scaling: "strength", flatDmg: 1, pen: 1, skill: "Fencing" }
 };
