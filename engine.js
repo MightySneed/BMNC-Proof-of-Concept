@@ -139,6 +139,20 @@ function getAbilityLevel(id, abilityKey) {
   return Math.max(0, parseInt(document.getElementById(`f${id}-s-${abilityKey}`)?.value) || 0);
 }
 
+function updateSkillLevelCaps(id) {
+  const container = document.getElementById(`f${id}-skills-editor`);
+  if (!container) return;
+  container.querySelectorAll(".skill-row").forEach(row => {
+    const abilityKey = row.querySelector(".skill-ability")?.value;
+    const levelInput = row.querySelector(".skill-level");
+    if (!levelInput) return;
+    const cap = abilityKey ? getAbilityLevel(id, abilityKey) : 0;
+    levelInput.max = String(cap);
+    if (Number(levelInput.value) > cap) levelInput.setCustomValidity(`Skill level cannot exceed its selected ability level (${cap}).`);
+    else levelInput.setCustomValidity("");
+  });
+}
+
 function calculateTotalXP(id) {
   const primaries = readPrimariesFromUI(id);
   let totalXP = calcCumulativeXP(primaries.body) + calcCumulativeXP(primaries.nerve) + calcCumulativeXP(primaries.character);
@@ -151,6 +165,7 @@ function calculateTotalXP(id) {
   });
   const xpDisplay = document.getElementById(`f${id}-xp`);
   if (xpDisplay) xpDisplay.innerText = `XP Spent: ${totalXP}`;
+  updateSkillLevelCaps(id);
   renderPeggingTable(id);
 }
 
@@ -353,6 +368,8 @@ function validateFighterSetup(id) {
     const value = Number(document.getElementById(`f${id}-ar-${loc}`)?.value ?? 0);
     if (!Number.isInteger(value) || value < 0) errors.push(`Armour at ${locationNames[loc]} must be a non-negative whole number.`);
   }
+  const weaponName = document.getElementById(`f${id}-w-name`)?.value?.trim() || "";
+  if (!weaponName) errors.push("Weapon name is required.");
   const diceSides = Number(document.getElementById(`f${id}-w-dice`)?.value);
   const flat = Number(document.getElementById(`f${id}-w-flat`)?.value ?? 0);
   const pen = Number(document.getElementById(`f${id}-w-pen`)?.value ?? 0);
@@ -514,8 +531,6 @@ function advanceToNextActor() {
     const idx = (activeIndex + offset) % count;
     const char = combatQueue[idx];
     if (!isCombatCapable(char)) {
-      char.actions.ap = 0;
-      char.actions.ap = 0;
       char.actions.ap = 0;
       continue;
     }
