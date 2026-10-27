@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "kind": "bmnc.character",
+  "name": "Kledd",
+  "race": "Human",
+  "team": "A",
+  "primaries": {
+    "body": 4,
+    "nerve": 2,
+    "character": 2
+  },
+  "substats": {
+    "strength": 4,
+    "toughness": 2,
+    "con": 0,
+    "woundCap": 2,
+    "dexterity": 2,
+    "initiative": 1,
+    "hc": 1,
+    "finesse": 0,
+    "actionCapacity": 1,
+    "gumption": 2,
+    "charisma": 0,
+    "willpower": 0
+  },
+  "skills": [
+    {
+      "name": "Grappling",
+      "domain": "body",
+      "ability": "strength",
+      "level": 1
+    }
+  ],
+  "armor": {
+    "1": 2,
+    "2": 2,
+    "3": 2,
+    "4": 2,
+    "5": 2,
+    "6": 2
+  },
+  "weapon": {
+    "name": "Greatsword",
+    "diceSides": 8,
+    "scaling": "strength",
+    "flatDmg": 2,
+    "pen": 3
+  }
+}
