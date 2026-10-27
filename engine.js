@@ -9,9 +9,10 @@ class Weapon {
 }
 
 class Fighter {
-  constructor(name, primaries, substats, weapon, armorMap, pegAllocations, team = "A") {
+  constructor(name, primaries, substats, weapon, armorMap, pegAllocations, team = "A", skills = []) {
     this.name = name; this.team = team; this.primaries = primaries;
     this.substats = substats; this.equippedWeapon = weapon;
+    this.skills = Array.isArray(skills) ? skills.map(skill => ({...skill})) : [];
     this.bodyPlan = {
       1: { name: "Head", state: "untouched", armor: armorMap[1] || 0, isVital: true, pegs: pegAllocations[1] || {} },
       2: { name: "Torso", state: "untouched", armor: armorMap[2] || 0, isVital: true, pegs: pegAllocations[2] || {} },
@@ -26,7 +27,7 @@ class Fighter {
     });
     this.actions = { ap: 0 };
     this.isUnconscious = false; this.isDead = false;
-    this.statuses = { brokenDefense: false };
+    this.statuses = { brokenDefense: false, shaken: false, parryReady: false, aimReady: false };
     this.resetTurnActions();
   }
   get baseToughness() { return 5 + (this.substats.toughness || 0); }
@@ -36,7 +37,9 @@ class Fighter {
   getStatPenalty(statKey) {
     let penalty = 0;
     Object.values(this.bodyPlan).forEach(loc => {
-      if ((loc.state === "injured" || loc.state === "destroyed") && loc.pegs && loc.pegs[statKey]) penalty += loc.pegs[statKey];
+      const disabledByPhysicalInjury = loc.state === "injured" || loc.state === "destroyed";
+      const disabledByShaken = loc.name === "Aura/System" && this.statuses?.shaken;
+      if ((disabledByPhysicalInjury || disabledByShaken) && loc.pegs && loc.pegs[statKey]) penalty += loc.pegs[statKey];
     });
     return penalty;
   }
@@ -53,18 +56,18 @@ class Fighter {
     return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.grazeCount, 0);
   }
   get totalInjuries() {
-    return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.injuryCount + loc.destroyedCount, 0);
+    return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.injuryCount + loc.destroyedCount, 0) + (this.statuses?.shaken ? 1 : 0);
   }
   get totalDestroyedHits() {
     return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.destroyedCount, 0);
   }
   get totalWoundsSum() { return this.totalGrazes + this.totalInjuries; }
   get totalTraumaPenalty() {
-    return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.grazeCount + 2 * loc.injuryCount + 3 * loc.destroyedCount, 0);
+    return Object.values(this.bodyPlan).reduce((sum, loc) => sum + loc.grazeCount + 2 * loc.injuryCount + 3 * loc.destroyedCount, 0) + (this.statuses?.shaken ? 2 : 0);
   }
   resetTurnActions() { this.actions.ap = this.maxActionPoints; }
   resetFullState() {
-    this.isDead = false; this.isUnconscious = false; this.statuses.brokenDefense = false;
+    this.isDead = false; this.isUnconscious = false; this.statuses.brokenDefense = false; this.statuses.shaken = false; this.statuses.parryReady = false; this.statuses.aimReady = false;
     Object.values(this.bodyPlan).forEach(loc => {
       loc.state = "untouched"; loc.grazeCount = 0; loc.injuryCount = 0; loc.destroyedCount = 0;
     });
@@ -135,6 +138,22 @@ function getSkillRowsFromUI(id) {
 function availableAbilitiesForDomain(domain) {
   return subStatDefs.filter(stat => stat.parent === domain && !stat.isUnpegged);
 }
+function getSkillBonus(char, skillName) {
+  const expected = String(skillName || "").trim().toLowerCase();
+  const skill = (char?.skills || [])
+    .filter(item => String(item.name || "").trim().toLowerCase() === expected)
+    .sort((a,b) => (Number(b.level) || 0) - (Number(a.level) || 0))[0];
+  if (!skill) return 0;
+  return Math.min(Math.max(0, Number(skill.level) || 0), char.getEffectiveStat(skill.ability));
+}
+
+function getWeaponSkillBonus(char) {
+  const weaponName = String(char?.equippedWeapon?.name || "").trim().toLowerCase();
+  if (/\bunarmed\b/.test(weaponName)) return getSkillBonus(char, "Martial Arts");
+  if (/\b(bow|crossbow|sling)\b/.test(weaponName)) return getSkillBonus(char, "Archery");
+  return getSkillBonus(char, "Fencing");
+}
+
 function getAbilityLevel(id, abilityKey) {
   return Math.max(0, parseInt(document.getElementById(`f${id}-s-${abilityKey}`)?.value) || 0);
 }
@@ -147,9 +166,11 @@ function updateSkillLevelCaps(id) {
     const levelInput = row.querySelector(".skill-level");
     if (!levelInput) return;
     const cap = abilityKey ? getAbilityLevel(id, abilityKey) : 0;
+    const overCap = Number(levelInput.value) > cap;
     levelInput.max = String(cap);
-    if (Number(levelInput.value) > cap) levelInput.setCustomValidity(`Skill level cannot exceed its selected ability level (${cap}).`);
-    else levelInput.setCustomValidity("");
+    levelInput.setCustomValidity(overCap ? `Skill level cannot exceed its selected ability level (${cap}).` : "");
+    row.classList.toggle("skill-over-cap", overCap);
+    levelInput.setAttribute("aria-invalid", overCap ? "true" : "false");
   });
 }
 
@@ -327,7 +348,8 @@ function validateFighterSetup(id) {
   const errors = [];
   const primaries = {};
   [["body", "Body"], ["nerve", "Nerve"], ["character", "Character"]].forEach(([key, label]) => {
-    const raw = Number(document.getElementById(`f${id}-p-${key}`)?.value ?? 0);
+    const inputKey = key === "character" ? "char" : key;
+    const raw = Number(document.getElementById(`f${id}-p-${inputKey}`)?.value ?? 0);
     if (!Number.isInteger(raw) || raw < 0) {
       errors.push(`${label} domain must be a non-negative whole number.`);
       primaries[key] = 0;
@@ -406,7 +428,7 @@ function startBattle() {
         if (count > 0) pegAllocations[locId][stat.key] = count;
       });
     });
-    return new Fighter(name, primaries, substats, weapon, armorMap, pegAllocations, id === 1 ? "A" : "B");
+    return new Fighter(name, primaries, substats, weapon, armorMap, pegAllocations, id === 1 ? "A" : "B", getSkillRowsFromUI(id).filter(skill => skill.name && skill.level > 0));
   }
   try {
     f1 = readFighter(1); f2 = readFighter(2);
@@ -503,8 +525,9 @@ function startTurn(char) {
   }
   if (injuries >= char.currentWoundCap) {
     const roll = d20();
-    const total = roll + effectiveGumption - traumaPenalty;
-    log(`🧠 Gumption check: d20(${roll}) + Gumption(${effectiveGumption}) − Trauma(${traumaPenalty}) = ${total} (needs > 10)`, "log-check");
+    const painTolerance = getSkillBonus(char, "Pain Tolerance");
+    const total = roll + effectiveGumption + painTolerance - traumaPenalty;
+    log(`🧠 Gumption check: d20(${roll}) + Gumption(${effectiveGumption}) + Pain Tolerance(${painTolerance}) − Trauma(${traumaPenalty}) = ${total} (needs > 10)`, "log-check");
     if (total <= 10) {
       char.isUnconscious = true; char.actions.ap = 0;
       log(`💤 Check failed: ${char.name} falls unconscious.`, "log-damage");
@@ -517,6 +540,11 @@ function startTurn(char) {
 }
 
 function advanceToNextActor() {
+  const outgoing = combatQueue[activeIndex];
+  if (outgoing?.statuses?.shaken) {
+    outgoing.statuses.shaken = false;
+    log(`🌫️ ${outgoing.name}'s Shaken effect fades after their activation.`);
+  }
   if (combatEnded) {
     updateUI();
     return;
@@ -572,6 +600,56 @@ function executeMove() {
   if (char.actions.ap <= 0) advanceToNextActor(); else updateUI();
 }
 
+function executeIntimidate() {
+  const attacker = combatQueue[activeIndex];
+  const defender = attacker === f1 ? f2 : f1;
+  if (!attacker || combatEnded || !isCombatCapable(attacker)) return;
+  if (!isCombatCapable(defender)) { log("⚠️ There is no combat-capable target to intimidate."); return; }
+  if (attacker.actions.ap < 1) { log("⚠️ Intimidate costs 1 AP."); return; }
+  attacker.actions.ap -= 1;
+  const attackDie = d10();
+  const charisma = attacker.getEffectiveStat("charisma");
+  const intimidation = getSkillBonus(attacker, "Intimidation");
+  const attackTotal = attackDie + charisma + intimidation;
+  const defenceDie = d10();
+  const gumption = defender.getEffectiveStat("gumption");
+  const bravery = getSkillBonus(defender, "Bravery");
+  const defenceTotal = defenceDie + gumption + bravery;
+
+  log(`😈 ${attacker.name} attempts to intimidate ${defender.name} (1 AP)...`);
+  log(`Intimidation: d10(${attackDie}) + Charisma(${charisma}) + Intimidation(${intimidation}) = ${attackTotal} vs Defence: d10(${defenceDie}) + Gumption(${gumption}) + Bravery(${bravery}) = ${defenceTotal}.`);
+  if (attackTotal > defenceTotal) {
+    const alreadyShaken = !!defender.statuses.shaken;
+    defender.statuses.shaken = true;
+    log(alreadyShaken
+      ? `⚡ ${defender.name} remains Shaken; the effect does not stack.`
+      : `😨 ${defender.name} is Shaken: a temporary Aura injury (-2 trauma, may trigger a Gumption check, and disables Aura-pegged stats) until their next activation ends.`, "log-damage");
+  } else {
+    log(`🛡️ ${defender.name} withstands the intimidation.`);
+  }
+  advanceToNextActor();
+}
+
+function executeQuickParry() {
+  const char = combatQueue[activeIndex];
+  if (!char || combatEnded || !isCombatCapable(char)) return;
+  if (char.actions.ap < 1) { log("⚠️ Quick Parry costs 1 AP."); return; }
+  char.actions.ap -= 1;
+  char.statuses.parryReady = true;
+  log(`🛡️ ${char.name} spends 1 AP to prepare a Quick Parry. Their current HC bonus doubles against the next incoming attack.`);
+  advanceToNextActor();
+}
+
+function executeAim() {
+  const char = combatQueue[activeIndex];
+  if (!char || combatEnded || !isCombatCapable(char)) return;
+  if (char.actions.ap < 1) { log("⚠️ Aim / Set-up costs 1 AP."); return; }
+  char.actions.ap -= 1;
+  char.statuses.aimReady = true;
+  log(`🎯 ${char.name} spends 1 AP to Aim / Set-up. Their next attack doubles effective Dexterity + the relevant weapon-skill bonus.`);
+  advanceToNextActor();
+}
+
 function executeBreak() {
   const attacker = combatQueue[activeIndex];
   const defender = attacker === f1 ? f2 : f1;
@@ -612,17 +690,38 @@ function executeAttack(isRushed = false) {
   if (!isCombatCapable(defender)) { log("⚠️ The target is no longer combat-capable."); return; }
 
   const cost = isRushed ? 1 : 2;
-  if (attacker.actions.ap < cost) { log(`⚠️ ${isRushed ? "Rushed Attack" : "Committed Attack"} costs ${cost} AP.`); return; }
+  if (attacker.actions.ap < cost) {
+    log(`⚠️ ${isRushed ? "Rushed Attack" : "Committed Attack"} costs ${cost} AP.`);
+    return;
+  }
   attacker.actions.ap -= cost;
 
   const actionType = isRushed ? "RUSHED · 1 AP · d10" : "COMMITTED · 2 AP · d20";
   log(`💥 ${attacker.name} attacks ${defender.name} with [${attacker.equippedWeapon.name}] (${actionType})...`);
+
   const roll = isRushed ? d10() : d20();
-  const hitBonus = attacker.getEffectiveStat("dexterity");
+  const dexterityBonus = attacker.getEffectiveStat("dexterity");
+  const weaponSkillBonus = getWeaponSkillBonus(attacker);
+  const baseAttackBonus = dexterityBonus + weaponSkillBonus;
+  const aimed = !!attacker.statuses.aimReady;
+  const hitBonus = aimed ? baseAttackBonus * 2 : baseAttackBonus;
+  if (aimed) {
+    attacker.statuses.aimReady = false;
+    log(`🎯 Aim / Set-up applies: (Dex ${dexterityBonus} + weapon skill ${weaponSkillBonus}) doubles from ${baseAttackBonus} to ${hitBonus}.`);
+  }
+
+  const parrying = !!defender.statuses.parryReady;
+  const hcBonus = defender.getEffectiveStat("hc");
+  const targetHC = defender.baseHitClass + (parrying ? hcBonus : 0);
+  if (parrying) {
+    defender.statuses.parryReady = false;
+    log(`🛡️ Quick Parry applies: HC bonus ${hcBonus} doubles; target HC is ${targetHC} for this attack.`);
+  }
+
   const totalHit = roll + hitBonus;
   const isNat20 = !isRushed && roll === 20;
-  if (!isNat20 && totalHit < defender.baseHitClass) {
-    log(`❌ Miss: ${roll} [${isRushed ? "d10" : "d20"}] + ${hitBonus} Dex = ${totalHit} vs HC ${defender.baseHitClass}.`);
+  if (!isNat20 && totalHit < targetHC) {
+    log(`❌ Miss: ${roll} [${isRushed ? "d10" : "d20"}] + ${hitBonus} attack bonus = ${totalHit} vs HC ${targetHC}.`);
     advanceToNextActor();
     return;
   }
@@ -736,7 +835,7 @@ function renderCard(char, elId) {
       <strong>Stats:</strong> Toughness ${char.baseToughness} · HC ${char.baseHitClass} · Wound Capacity ${char.currentWoundCap}<br>
       <strong>Action Capacity:</strong> ${char.getEffectiveStat("actionCapacity")} · <strong>AP:</strong> ${ap}/${char.maxActionPoints} this round<br>
       <strong>Speed:</strong> ${char.getMovementSpeed()} ft per Move action<br>
-      <strong>Wounds:</strong> Grazes ${char.totalGrazes} · Injury/destroyed hits ${char.totalInjuries} · Trauma penalty ${char.totalTraumaPenalty} ${char.statuses.brokenDefense ? "· 💥 DEFENCE BROKEN" : ""}
+      <strong>Wounds:</strong> Grazes ${char.totalGrazes} · Injury/destroyed hits ${char.totalInjuries} · Trauma penalty ${char.totalTraumaPenalty} ${char.statuses.brokenDefense ? "· 💥 DEFENCE BROKEN" : ""} ${char.statuses.shaken ? "· 😨 SHAKEN" : ""} ${char.statuses.parryReady ? "· 🛡️ PARRY READY" : ""} ${char.statuses.aimReady ? "· 🎯 AIMED" : ""}
     </div>
     <h4>Anatomical status</h4>${paperDollHTML}
     <h4 class="combat-actions-heading">Combat actions</h4>
@@ -744,6 +843,9 @@ function renderCard(char, elId) {
       <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeMove()">👣 Move · 1 AP</button>
       <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeAttack(true)">⚡ Rushed attack · 1 AP · d10</button>
       <button class="btn" ${!canAct || ap < 2 ? "disabled" : ""} onclick="executeAttack(false)">⚔️ Committed attack · 2 AP · d20</button>
+      <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeIntimidate()">😈 Intimidate · 1 AP · d10 vs d10</button>
+      <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeQuickParry()">🛡️ Quick Parry · 1 AP</button>
+      <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeAim()">🎯 Aim / Set-up · 1 AP</button>
       <button class="btn" ${!canAct || ap < 2 ? "disabled" : ""} onclick="executeBreak()">🛡️ Break stance · 2 AP</button>
     </div>`;
 }
@@ -995,7 +1097,7 @@ function exportCharacter(id, format) {
   const armorLines = [1,2,3,4,5,6].map(loc => `  ${locationNames[loc]}: ${data.armor[String(loc)]}`).join("\n");
   const pegLines = data.pegs && Object.keys(data.pegs).length ? Object.entries(data.pegs).map(([loc,values]) => `  ${locationNames[loc] || loc}: ${Object.entries(values).map(([key,value]) => `${key} ${value}`).join(", ")}`).join("\n") : "  Auto-distribute on import";
   const weapon = data.weapon;
-  const content = `BMNC CHARACTER SHEET\n===================\nName: ${data.name}\nRace/body-plan tag: ${data.race}\nEstimated build: ${domains}\n\nDOMAINS\n${domains}\n\nABILITIES\n${statLines}\n\nSKILLS\n${skillLines}\n\nARMOUR\n${armorLines}\n\nPEGGING\n${pegLines}\n\nWEAPON\n  ${weapon.name}\n  d${weapon.diceSides} + ${weapon.scaling} + ${weapon.flatDmg} flat; Pen ${weapon.pen}\n\nNOTE\nTXT is human-readable. Use JSON for round-trip import. Race/body-plan is descriptive only in this prototype.\n`;
+  const content = `BMNC CHARACTER SHEET\n===================\nName: ${data.name}\nRace/body-plan tag: ${data.race}\nEstimated build: ${domains}\n\nDOMAINS\n${domains}\n\nABILITIES\n${statLines}\n\nSKILLS\n${skillLines}\n\nARMOUR\n${armorLines}\n\nPEGGING\n${pegLines}\n\nWEAPON\n  ${weapon.name}\n  d${weapon.diceSides} + ${weapon.scaling} + ${weapon.flatDmg} flat; Pen ${weapon.pen}\n  Weapon skill: ${weapon.skill || "Fencing"}\n\nNOTE\nTXT is human-readable. Use JSON for round-trip import. Race/body-plan is descriptive only in this prototype.\n`;
   downloadTextFile(`${safeName}.txt`, content, "text/plain;charset=utf-8");
 }
 function importCharacterFile(id, input) {
@@ -1017,6 +1119,31 @@ function importCharacterFile(id, input) {
   };
   reader.onerror = () => { alert("Could not read that file."); input.value = ""; };
   reader.readAsText(file);
+}
+
+function clearCharacter(id) {
+  const status = document.getElementById("presetStatus");
+  const setValue = (suffix, value) => {
+    const el = document.getElementById(`f${id}-${suffix}`);
+    if (el) el.value = String(value);
+  };
+  setValue("name","New Character"); setValue("race","Human");
+  setValue("p-body",0); setValue("p-nerve",0); setValue("p-char",0);
+  const charPreset=document.getElementById(`f${id}-character-preset`);
+  if(charPreset) charPreset.value="";
+  const weaponPreset=document.getElementById(`f${id}-weapon-preset`);
+  if(weaponPreset) weaponPreset.value="";
+  document.querySelectorAll(`[id^="f${id}-peg-"]`).forEach(input=>{input.value="";});
+  buildCreatorUI(id);
+  subStatDefs.forEach(stat=>{
+    const input=document.getElementById(`f${id}-s-${stat.key}`);
+    if(input) input.value="0";
+  });
+  renderSkillsEditor(id,[]);
+  for(let loc=1;loc<=6;loc++) setValue(`ar-${loc}`,0);
+  setValue("w-name","Unarmed"); setValue("w-dice",4); setValue("w-scale","none"); setValue("w-flat",0); setValue("w-pen",0);
+  calculateTotalXP(id);
+  if(status) status.textContent=`Fighter ${id} cleared. Start with a blank character or load a preset.`;
 }
 
 

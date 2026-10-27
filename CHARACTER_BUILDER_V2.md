@@ -1,75 +1,34 @@
-# BMNC Character Workshop v2 — Working Rules
+# Character Builder V2.2 — Current Prototype Notes
 
-This is a prototype reference for the character builder and the current combat test. The point-buy formula and Action Point costs are test rules, not final balance.
+## Character builder usability
 
-## Character file format
-
-- The canonical import/export format is JSON, with `schemaVersion: 1` and `kind: "bmnc.character"`.
-- `data/character-schema.json` describes the file format.
-- `examples/kledd.json` is a working example based on the Kledd build discussed during design.
-- The builder can import JSON and export JSON or a readable TXT sheet. TXT is not an import format.
-- If `pegs` is omitted, the builder automatically distributes ordinary ability points across legal locations. If supplied, pegs must add up to the corresponding ability levels.
-- `race` is retained as a descriptive tag. Race-specific baselines and body plans are not yet applied by combat.
+- Starter presets remain loaded on page start. Each fighter has a Clear character button for a blank build without affecting the other fighter.
+- The Character domain is mapped from the form's `p-char` input to the internal `character` key.
+- Skill levels above their selected ability are highlighted in red and block combat until corrected.
+- Stat pegging is under a collapsed Advanced section with horizontal scrolling; armour fields use wider responsive inputs.
 
 ## Point-buy
 
-All purchased levels use the same cumulative cost curve:
+- Cumulative level cost: `level × (level + 1) / 2`.
+- Hierarchy: Domain → Ability → Skill. Ordinary abilities cap at their domain. Skills choose a domain and ability and cap at that ability.
+- Toughness, Wound Capacity, HC, Action Capacity and Willpower are unpegged, cost twice the cumulative level cost, and cap at floor(parent domain / 2).
+- Action Points are an unpegged round resource pool, not a pegged stat. Round budget: `2 + effective Action Capacity`.
 
-`cost(level) = 1 + 2 + ... + level = level × (level + 1) / 2`
+## Experimental combat actions
 
-The hierarchy is:
+**Intimidate (1 AP):** attacker rolls d10 + effective Charisma + Intimidation; defender rolls d10 + effective Gumption + Bravery. A strict win applies non-stacking Shaken, which acts as a temporary Aura injury, counts as one injury, and adds −2 trauma until the target's next activation ends.
 
-`Domain → Ability → Skill`
+**Quick Parry (1 AP):** readies a defence against the next incoming attack. It doubles the target's current HC bonus for that attack, then is consumed. For example, HC +2 raises target HC from 12 to 14.
 
-- A domain costs the cumulative cost of its level.
-- An ordinary ability costs the cumulative cost of its level and cannot exceed its parent domain.
-- A skill costs the cumulative cost of its level and cannot exceed the ability selected for that skill.
-- Each skill records its domain and ability path, allowing the same concept (for example, Grappling) to be built through different attributes.
+**Aim / Set-up (1 AP):** readies the next attack. It doubles the combined effective Dexterity + relevant weapon skill bonus, then is consumed.
 
-Example:
+Weapon skill lookup in this prototype is deliberately simple: Unarmed uses Martial Arts; weapon names containing Bow, Crossbow or Sling use Archery; other named weapons use Fencing. Skills are bounded by their selected ability's effective level. Weapon categories should become explicit schema data before the content set grows.
 
-- Body 2 costs 3 XP.
-- Strength 2 costs 3 XP.
-- Grappling 1 under Body → Strength costs 1 XP.
-- Total: 7 XP.
+**Pain Tolerance** adds to activation-start Gumption checks; **Bravery** adds to Intimidate defence. The d10-vs-d10 Intimidate outcome, Quick Parry and Aim / Set-up all need tabletop playtest.
 
-Body 3 → Strength 3 → Grappling 1 costs 6 + 6 + 1 = 13 XP.
+## Current combat playtest limits
 
-### Special, unpegged stats
-
-Toughness, Wound Capacity, Hit Class (HC), Action Capacity and Willpower are unpegged. Their level cap is the floor of half their parent domain, and their XP cost is twice the cumulative cost curve.
-
-For example, Nerve 2 allows HC 1 and Action Capacity 1. Each level costs 2 XP. Nerve 3 still allows only level 1; Nerve 4 allows level 2.
-
-| Special stat | Parent domain | Current prototype use |
-|---|---|---|
-| Toughness | Body | Base Toughness = 5 + purchased level |
-| Wound Capacity | Body | Injury limit = 1 + purchased level |
-| HC | Nerve | Hit Class = 10 + purchased level |
-| Action Capacity | Nerve | Adds to the round's AP budget |
-| Willpower | Character | Point-buy placeholder; its resource effect is not implemented yet |
-
-## Current Action Point playtest model
-
-- Round budget: `2 + effective Action Capacity` AP.
-- Move: 1 AP; move up to Speed. Multiple consecutive Move actions are allowed.
-- Rushed Attack: 1 AP, d10 to hit, normal weapon damage on a hit.
-- Committed Attack: 2 AP, d20 to hit, normal weapon damage on a hit.
-- Break Stance: 2 AP in this prototype.
-- A non-movement action ends the current activation. Unspent AP remains available on the character's next interlaced activation within the round.
-- When all combatants have spent their AP, a new round begins and AP refreshes.
-
-The current prototype has no grid or position tracking, so Move spends AP and reports the distance rather than changing a token's coordinates. Disengage, opportunity attacks and Overwatch are not implemented in this build.
-
-## Speed, locations and trauma
-
-- Current human/grid baseline: 5 ft per functional leg (10 ft for two functional legs). Race-specific speed is not applied yet.
-- Physical attacks roll a d6 for Head, Torso, Left Arm, Right Arm, Left Leg, Right Leg. Aura/System remains outside physical hit-location rolls.
-- Head and Torso are currently marked vital.
-- Graze, Injury and Destroyed hits accumulate separately by location. Repeated hits do not multiply the stat penalty for an already-disabled location.
-- Gumption checks happen at the start of a character activation once injury/destroyed hits reach Wound Capacity. Current trauma penalty: Graze −1, Injury −2, Destroyed −3. The roll is d20 + effective Gumption − trauma penalty; a result over 10 passes.
-- The current rule for exceeding Wound Capacity is immediate collapse. More nuanced unconsciousness, fleeing, Willpower use and stabilisation remain open design work.
-
-## Known scope limits
-
-This build remains a two-fighter prototype. It does not yet implement racial baselines, arbitrary body plans, movement coordinates, disengagement/opportunity attacks, Overwatch, Aura-targeted effects, leadership actions or the Willpower resource. Skill rows are saved and costed but do not yet modify combat rolls.
+- Move costs 1 AP and may be repeated; Rushed Attack costs 1 AP/d10 and Committed Attack costs 2 AP/d20. Both deal normal weapon damage on a hit.
+- Head and Torso are vital in the current human body plan. Human speed is 5 ft per functional leg.
+- Race/body-plan tags are descriptive only. Racial baselines and alternate anatomy are not implemented in digital combat.
+- Grid movement, Disengage/opportunity attacks, Overwatch, stabilisation, Willpower spending, multi-target combat, and more complex leadership effects remain future work.
