@@ -34,6 +34,7 @@
             <option value="guard">Balanced Guard</option>
           </select>
           <button class="btn btn-small" onclick="loadCharacterPreset(1)">Load character</button>
+          <button class="btn btn-small btn-clear" type="button" onclick="clearCharacter(1)">Clear character</button>
         </div>
         <div class="identity-fields">
           <label for="f1-name">Name <input type="text" id="f1-name" value="Guts"></label>
@@ -60,17 +61,20 @@
         <button class="btn btn-small add-skill-button" type="button" onclick="addSkillRow(1)">+ Add skill</button>
 
         <h4>Location Armor Settings</h4>
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:0.8em;">
-          <div>Head: <input type="number" id="f1-ar-1" value="1" style="width:35px;"></div>
-          <div>Torso: <input type="number" id="f1-ar-2" value="2" style="width:35px;"></div>
-          <div>L.Arm: <input type="number" id="f1-ar-3" value="1" style="width:35px;"></div>
-          <div>R.Arm: <input type="number" id="f1-ar-4" value="1" style="width:35px;"></div>
-          <div>L.Leg: <input type="number" id="f1-ar-5" value="1" style="width:35px;"></div>
-          <div>R.Leg: <input type="number" id="f1-ar-6" value="1" style="width:35px;"></div>
+        <div class="armor-grid">
+          <label class="armor-field">Head<input type="number" id="f1-ar-1" class="armor-value" min="0" step="1" value="0" aria-label="Head armour"></label>
+          <label class="armor-field">Torso<input type="number" id="f1-ar-2" class="armor-value" min="0" step="1" value="0" aria-label="Torso armour"></label>
+          <label class="armor-field">L.Arm<input type="number" id="f1-ar-3" class="armor-value" min="0" step="1" value="0" aria-label="L.Arm armour"></label>
+          <label class="armor-field">R.Arm<input type="number" id="f1-ar-4" class="armor-value" min="0" step="1" value="0" aria-label="R.Arm armour"></label>
+          <label class="armor-field">L.Leg<input type="number" id="f1-ar-5" class="armor-value" min="0" step="1" value="0" aria-label="L.Leg armour"></label>
+          <label class="armor-field">R.Leg<input type="number" id="f1-ar-6" class="armor-value" min="0" step="1" value="0" aria-label="R.Leg armour"></label>
         </div>
 
-        <h4>Stat pegging (points lost when a location is disabled)</h4>
-        <div id="f1-pegging-container"></div>
+        <details class="advanced-section">
+          <summary>Advanced: stat pegging</summary>
+          <p class="section-help">Distribute each ability across legal body locations. Points pegged to an injured or destroyed location stop contributing.</p>
+          <div id="f1-pegging-container" class="peg-table-wrap"></div>
+        </details>
 
         <h4>Equipped Weapon</h4>
         <div class="preset-control">
@@ -111,6 +115,7 @@
             <option value="guard">Balanced Guard</option>
           </select>
           <button class="btn btn-small" onclick="loadCharacterPreset(2)">Load character</button>
+          <button class="btn btn-small btn-clear" type="button" onclick="clearCharacter(2)">Clear character</button>
         </div>
         <div class="identity-fields">
           <label for="f2-name">Name <input type="text" id="f2-name" value="Agile Duelist"></label>
@@ -138,16 +143,19 @@
 
         <h4>Location Armor Settings</h4>
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; font-size:0.8em;">
-          <div>Head: <input type="number" id="f2-ar-1" value="1" style="width:35px;"></div>
-          <div>Torso: <input type="number" id="f2-ar-2" value="1" style="width:35px;"></div>
-          <div>L.Arm: <input type="number" id="f2-ar-3" value="1" style="width:35px;"></div>
-          <div>R.Arm: <input type="number" id="f2-ar-4" value="1" style="width:35px;"></div>
-          <div>L.Leg: <input type="number" id="f2-ar-5" value="1" style="width:35px;"></div>
-          <div>R.Leg: <input type="number" id="f2-ar-6" value="1" style="width:35px;"></div>
+          <label class="armor-field">Head<input type="number" id="f2-ar-1" class="armor-value" min="0" step="1" value="0" aria-label="Head armour"></label>
+          <label class="armor-field">Torso<input type="number" id="f2-ar-2" class="armor-value" min="0" step="1" value="0" aria-label="Torso armour"></label>
+          <label class="armor-field">L.Arm<input type="number" id="f2-ar-3" class="armor-value" min="0" step="1" value="0" aria-label="L.Arm armour"></label>
+          <label class="armor-field">R.Arm<input type="number" id="f2-ar-4" class="armor-value" min="0" step="1" value="0" aria-label="R.Arm armour"></label>
+          <label class="armor-field">L.Leg<input type="number" id="f2-ar-5" class="armor-value" min="0" step="1" value="0" aria-label="L.Leg armour"></label>
+          <label class="armor-field">R.Leg<input type="number" id="f2-ar-6" class="armor-value" min="0" step="1" value="0" aria-label="R.Leg armour"></label>
         </div>
 
-        <h4>Stat pegging (points lost when a location is disabled)</h4>
-        <div id="f2-pegging-container"></div>
+        <details class="advanced-section">
+          <summary>Advanced: stat pegging</summary>
+          <p class="section-help">Distribute each ability across legal body locations. Points pegged to an injured or destroyed location stop contributing.</p>
+          <div id="f2-pegging-container" class="peg-table-wrap"></div>
+        </details>
 
         <h4>Equipped Weapon</h4>
         <div class="preset-control">
