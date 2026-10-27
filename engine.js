@@ -27,7 +27,7 @@ class Fighter {
     });
     this.actions = { ap: 0 };
     this.isUnconscious = false; this.isDead = false;
-    this.statuses = { brokenDefense: false, shaken: false };
+    this.statuses = { brokenDefense: false, shaken: false, parryReady: false, aimReady: false };
     this.resetTurnActions();
   }
   get baseToughness() { return 5 + (this.substats.toughness || 0); }
@@ -67,7 +67,7 @@ class Fighter {
   }
   resetTurnActions() { this.actions.ap = this.maxActionPoints; }
   resetFullState() {
-    this.isDead = false; this.isUnconscious = false; this.statuses.brokenDefense = false; this.statuses.shaken = false;
+    this.isDead = false; this.isUnconscious = false; this.statuses.brokenDefense = false; this.statuses.shaken = false; this.statuses.parryReady = false; this.statuses.aimReady = false;
     Object.values(this.bodyPlan).forEach(loc => {
       loc.state = "untouched"; loc.grazeCount = 0; loc.injuryCount = 0; loc.destroyedCount = 0;
     });
@@ -145,6 +145,13 @@ function getSkillBonus(char, skillName) {
     .sort((a,b) => (Number(b.level) || 0) - (Number(a.level) || 0))[0];
   if (!skill) return 0;
   return Math.min(Math.max(0, Number(skill.level) || 0), char.getEffectiveStat(skill.ability));
+}
+
+function getWeaponSkillBonus(char) {
+  const weaponName = String(char?.equippedWeapon?.name || "").trim().toLowerCase();
+  if (/\bunarmed\b/.test(weaponName)) return getSkillBonus(char, "Martial Arts");
+  if (/\b(bow|crossbow|sling)\b/.test(weaponName)) return getSkillBonus(char, "Archery");
+  return getSkillBonus(char, "Fencing");
 }
 
 function getAbilityLevel(id, abilityKey) {
@@ -604,13 +611,13 @@ function executeIntimidate() {
   const charisma = attacker.getEffectiveStat("charisma");
   const intimidation = getSkillBonus(attacker, "Intimidation");
   const attackTotal = attackDie + charisma + intimidation;
-  const defenceDie = d20();
+  const defenceDie = d10();
   const gumption = defender.getEffectiveStat("gumption");
   const bravery = getSkillBonus(defender, "Bravery");
   const defenceTotal = defenceDie + gumption + bravery;
 
   log(`😈 ${attacker.name} attempts to intimidate ${defender.name} (1 AP)...`);
-  log(`Intimidation: d10(${attackDie}) + Charisma(${charisma}) + Intimidation(${intimidation}) = ${attackTotal} vs Defence: d20(${defenceDie}) + Gumption(${gumption}) + Bravery(${bravery}) = ${defenceTotal}.`);
+  log(`Intimidation: d10(${attackDie}) + Charisma(${charisma}) + Intimidation(${intimidation}) = ${attackTotal} vs Defence: d10(${defenceDie}) + Gumption(${gumption}) + Bravery(${bravery}) = ${defenceTotal}.`);
   if (attackTotal > defenceTotal) {
     const alreadyShaken = !!defender.statuses.shaken;
     defender.statuses.shaken = true;
@@ -620,6 +627,26 @@ function executeIntimidate() {
   } else {
     log(`🛡️ ${defender.name} withstands the intimidation.`);
   }
+  advanceToNextActor();
+}
+
+function executeQuickParry() {
+  const char = combatQueue[activeIndex];
+  if (!char || combatEnded || !isCombatCapable(char)) return;
+  if (char.actions.ap < 1) { log("⚠️ Quick Parry costs 1 AP."); return; }
+  char.actions.ap -= 1;
+  char.statuses.parryReady = true;
+  log(`🛡️ ${char.name} spends 1 AP to prepare a Quick Parry. Their current HC bonus doubles against the next incoming attack.`);
+  advanceToNextActor();
+}
+
+function executeAim() {
+  const char = combatQueue[activeIndex];
+  if (!char || combatEnded || !isCombatCapable(char)) return;
+  if (char.actions.ap < 1) { log("⚠️ Aim / Set-up costs 1 AP."); return; }
+  char.actions.ap -= 1;
+  char.statuses.aimReady = true;
+  log(`🎯 ${char.name} spends 1 AP to Aim / Set-up. Their next attack doubles effective Dexterity + the relevant weapon-skill bonus.`);
   advanceToNextActor();
 }
 
@@ -663,17 +690,38 @@ function executeAttack(isRushed = false) {
   if (!isCombatCapable(defender)) { log("⚠️ The target is no longer combat-capable."); return; }
 
   const cost = isRushed ? 1 : 2;
-  if (attacker.actions.ap < cost) { log(`⚠️ ${isRushed ? "Rushed Attack" : "Committed Attack"} costs ${cost} AP.`); return; }
+  if (attacker.actions.ap < cost) {
+    log(`⚠️ ${isRushed ? "Rushed Attack" : "Committed Attack"} costs ${cost} AP.`);
+    return;
+  }
   attacker.actions.ap -= cost;
 
   const actionType = isRushed ? "RUSHED · 1 AP · d10" : "COMMITTED · 2 AP · d20";
   log(`💥 ${attacker.name} attacks ${defender.name} with [${attacker.equippedWeapon.name}] (${actionType})...`);
+
   const roll = isRushed ? d10() : d20();
-  const hitBonus = attacker.getEffectiveStat("dexterity");
+  const dexterityBonus = attacker.getEffectiveStat("dexterity");
+  const weaponSkillBonus = getWeaponSkillBonus(attacker);
+  const baseAttackBonus = dexterityBonus + weaponSkillBonus;
+  const aimed = !!attacker.statuses.aimReady;
+  const hitBonus = aimed ? baseAttackBonus * 2 : baseAttackBonus;
+  if (aimed) {
+    attacker.statuses.aimReady = false;
+    log(`🎯 Aim / Set-up applies: (Dex ${dexterityBonus} + weapon skill ${weaponSkillBonus}) doubles from ${baseAttackBonus} to ${hitBonus}.`);
+  }
+
+  const parrying = !!defender.statuses.parryReady;
+  const hcBonus = defender.getEffectiveStat("hc");
+  const targetHC = defender.baseHitClass + (parrying ? hcBonus : 0);
+  if (parrying) {
+    defender.statuses.parryReady = false;
+    log(`🛡️ Quick Parry applies: HC bonus ${hcBonus} doubles; target HC is ${targetHC} for this attack.`);
+  }
+
   const totalHit = roll + hitBonus;
   const isNat20 = !isRushed && roll === 20;
-  if (!isNat20 && totalHit < defender.baseHitClass) {
-    log(`❌ Miss: ${roll} [${isRushed ? "d10" : "d20"}] + ${hitBonus} Dex = ${totalHit} vs HC ${defender.baseHitClass}.`);
+  if (!isNat20 && totalHit < targetHC) {
+    log(`❌ Miss: ${roll} [${isRushed ? "d10" : "d20"}] + ${hitBonus} attack bonus = ${totalHit} vs HC ${targetHC}.`);
     advanceToNextActor();
     return;
   }
@@ -787,7 +835,7 @@ function renderCard(char, elId) {
       <strong>Stats:</strong> Toughness ${char.baseToughness} · HC ${char.baseHitClass} · Wound Capacity ${char.currentWoundCap}<br>
       <strong>Action Capacity:</strong> ${char.getEffectiveStat("actionCapacity")} · <strong>AP:</strong> ${ap}/${char.maxActionPoints} this round<br>
       <strong>Speed:</strong> ${char.getMovementSpeed()} ft per Move action<br>
-      <strong>Wounds:</strong> Grazes ${char.totalGrazes} · Injury/destroyed hits ${char.totalInjuries} · Trauma penalty ${char.totalTraumaPenalty} ${char.statuses.brokenDefense ? "· 💥 DEFENCE BROKEN" : ""} ${char.statuses.shaken ? "· 😨 SHAKEN" : ""}
+      <strong>Wounds:</strong> Grazes ${char.totalGrazes} · Injury/destroyed hits ${char.totalInjuries} · Trauma penalty ${char.totalTraumaPenalty} ${char.statuses.brokenDefense ? "· 💥 DEFENCE BROKEN" : ""} ${char.statuses.shaken ? "· 😨 SHAKEN" : ""} ${char.statuses.parryReady ? "· 🛡️ PARRY READY" : ""} ${char.statuses.aimReady ? "· 🎯 AIMED" : ""}
     </div>
     <h4>Anatomical status</h4>${paperDollHTML}
     <h4 class="combat-actions-heading">Combat actions</h4>
@@ -795,7 +843,9 @@ function renderCard(char, elId) {
       <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeMove()">👣 Move · 1 AP</button>
       <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeAttack(true)">⚡ Rushed attack · 1 AP · d10</button>
       <button class="btn" ${!canAct || ap < 2 ? "disabled" : ""} onclick="executeAttack(false)">⚔️ Committed attack · 2 AP · d20</button>
-      <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeIntimidate()">😈 Intimidate · 1 AP · d10</button>
+      <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeIntimidate()">😈 Intimidate · 1 AP · d10 vs d10</button>
+      <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeQuickParry()">🛡️ Quick Parry · 1 AP</button>
+      <button class="btn" ${!canAct || ap < 1 ? "disabled" : ""} onclick="executeAim()">🎯 Aim / Set-up · 1 AP</button>
       <button class="btn" ${!canAct || ap < 2 ? "disabled" : ""} onclick="executeBreak()">🛡️ Break stance · 2 AP</button>
     </div>`;
 }
