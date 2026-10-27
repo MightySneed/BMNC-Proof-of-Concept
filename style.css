@@ -323,3 +323,19 @@ label { color: #d7dbe4; }
   .skill-row .btn { grid-column: 2; justify-self: end; }
   .identity-fields { grid-template-columns: minmax(0,1fr); }
 }
+
+/* Character Workshop v2.1: compact chargen and validation */
+.btn-clear { border-color: #596177; background: #222632; }
+.btn-clear:hover:not(:disabled) { background: #343b4c; }
+.armor-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin:6px 0 10px; }
+.armor-field { display:flex; align-items:center; justify-content:space-between; gap:5px; min-width:0; font-size:.78rem; padding:5px 6px; background:rgba(7,9,14,.28); border:1px solid #363b4a; border-radius:6px; }
+.armor-value { width:62px !important; min-width:52px; flex:0 1 62px; padding:5px 4px !important; text-align:center; font-variant-numeric:tabular-nums; }
+.advanced-section { margin:14px 0 8px; border:1px solid #3b4151; background:rgba(8,10,16,.18); border-radius:9px; padding:10px 12px; }
+.advanced-section summary { cursor:pointer; color:var(--accent-strong); font-weight:800; }
+.advanced-section[open] summary { margin-bottom:10px; }
+.peg-table-wrap { width:100%; overflow-x:auto; padding-bottom:6px; }
+.peg-table { min-width:760px; }
+.skill-row.skill-over-cap { border-color:var(--danger); background:rgba(255,122,121,.09); box-shadow:inset 3px 0 var(--danger); }
+.skill-row.skill-over-cap .skill-level { border-color:var(--danger); color:#ffd3d2; }
+.skill-row .skill-level[aria-invalid="true"] { outline:1px solid var(--danger); }
+@media (max-width:520px) { .armor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .armor-value { width:68px !important; } }
