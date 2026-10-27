@@ -1,31 +1,26 @@
-# Character Builder V2.1 — Current Prototype Notes
+# Character Builder V2.2 — Current Prototype Notes
 
-## Character builder improvements
+## Character creation
+- Each fighter can be cleared to a blank build; starter presets remain on load.
+- Character-domain validation maps the UI's `p-char` field to the internal `character` domain.
+- Over-cap skills are highlighted instead of silently lowered. Advanced stat pegging is collapsible. Armour inputs remain responsive.
+- Weapon sheets now include a weapon-skill selector: Fencing, Martial Arts, Archery or None. Weapon skill is exported in JSON and defaults correctly for older character files that do not include the field.
 
-- Starter presets still load on page start. Each fighter now has a Clear character button for a blank build without affecting the other fighter.
-- The Character domain uses the `p-char` form field and is stored internally as `character`.
-- Skills that exceed their selected ability level are highlighted in red and block combat until corrected. Values are preserved for the player to decide how to resolve them.
-- Stat pegging is collapsed under an Advanced disclosure and the table scrolls horizontally. Armour fields have larger responsive widths.
+## Point-buy and AP
+- Cumulative cost per level: `level × (level + 1) / 2`.
+- Hierarchy: Domain → Ability → Skill; ordinary abilities cap at their domain and skills cap at their selected ability.
+- Toughness, Wound Capacity, HC, Action Capacity and Willpower are unpegged special stats, cost 2× cumulative XP and cap at floor(parent domain / 2).
+- The AP pool is unpegged. Current round budget remains `2 + effective Action Capacity`; location injuries do not directly remove AP. Action Capacity remains the separately purchased modifier to that pool.
 
-## Point-buy
+## Combat actions added for this test
+- **Intimidate:** 1 AP; attacker rolls d10 + effective Charisma + Intimidation, defender rolls d10 + effective Gumption + Bravery. A strict attacker win applies Shaken; ties are resisted.
+- **Quick Parry:** 1 AP; a non-movement action that doubles the current HC bonus against the next incoming attack. It is consumed by that attack.
+- **Aim / Set-up:** 1 AP; a non-movement action that doubles (effective Dexterity + matching weapon-skill bonus) on the next attack.
+- Weapon attacks add the character's matching weapon skill (Fencing, Martial Arts, Archery, or None) to effective Dexterity. If Aim is prepared, the full Dexterity-plus-skill modifier is doubled for the next attack.
+- Shaken remains a temporary Aura injury; Pain Tolerance adds to activation-start Gumption checks.
+- Quick Parry and Aim are basic status toggles in the current two-fighter sandbox. They do not use range, grid position or line of sight yet.
 
-- Cumulative level cost: `level × (level + 1) / 2`.
-- Hierarchy: Domain → Ability → Skill. Ordinary abilities cap at their domain. A skill chooses its domain and ability and caps at the chosen ability.
-- Toughness, Wound Capacity, HC, Action Capacity and Willpower are unpegged, cost twice the cumulative level cost, and cap at floor(parent domain / 2).
-
-## Experimental Intimidate
-
-- Cost: 1 AP; a non-movement action that ends the current activation.
-- Attacker: d10 + effective Charisma + Intimidation skill.
-- Defender: d20 + effective Gumption + Bravery skill.
-- A strictly higher attacker total inflicts Shaken; ties are resisted.
-- Shaken acts as a temporary Aura injury: disables Aura-pegged stats, counts as one injury, and adds −2 trauma to the activation-start Gumption check. It does not stack and expires when the affected character's next activation ends.
-- Pain Tolerance adds to Gumption checks. The opposed dice choice and success rate need tabletop testing. Forced flight/automatic Gumption failure is not implemented.
-
-## Current combat playtest limits
-
-- Round AP budget: `2 + effective Action Capacity`. Move costs 1 AP and can repeat. Rushed Attack costs 1 AP/d10; Committed Attack costs 2 AP/d20; both deal normal weapon damage on a hit.
-- Head and Torso are vital in the current human body plan. Speed is 5 ft per functional leg.
-- Skills are saved/imported. Intimidation, Bravery and Pain Tolerance have prototype mechanics; Fencing, Martial Arts and Archery are future candidate modifiers.
-- Race/body-plan tags are descriptive only; racial baselines and alternate body plans are not implemented.
-- Grid movement, Disengage/opportunity attacks, Overwatch, stabilisation, Willpower spending, team targeting, and additional skill hooks remain future work.
+## Limits still in force
+- Race tags remain descriptive; racial baselines and alternate body plans are not applied by the digital engine.
+- Grid coordinates, Disengage/opportunity attacks and Overwatch are not implemented digitally.
+- Willpower expenditure, stabilisation and Fencing/Martial Arts/Archery's other possible effects remain future work.
