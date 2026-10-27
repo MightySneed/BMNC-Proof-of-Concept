@@ -1047,7 +1047,7 @@ function exportCharacter(id, format) {
   const armorLines = [1,2,3,4,5,6].map(loc => `  ${locationNames[loc]}: ${data.armor[String(loc)]}`).join("\n");
   const pegLines = data.pegs && Object.keys(data.pegs).length ? Object.entries(data.pegs).map(([loc,values]) => `  ${locationNames[loc] || loc}: ${Object.entries(values).map(([key,value]) => `${key} ${value}`).join(", ")}`).join("\n") : "  Auto-distribute on import";
   const weapon = data.weapon;
-  const content = `BMNC CHARACTER SHEET\n===================\nName: ${data.name}\nRace/body-plan tag: ${data.race}\nEstimated build: ${domains}\n\nDOMAINS\n${domains}\n\nABILITIES\n${statLines}\n\nSKILLS\n${skillLines}\n\nARMOUR\n${armorLines}\n\nPEGGING\n${pegLines}\n\nWEAPON\n  ${weapon.name}\n  d${weapon.diceSides} + ${weapon.scaling} + ${weapon.flatDmg} flat; Pen ${weapon.pen}\n\nNOTE\nTXT is human-readable. Use JSON for round-trip import. Race/body-plan is descriptive only in this prototype.\n`;
+  const content = `BMNC CHARACTER SHEET\n===================\nName: ${data.name}\nRace/body-plan tag: ${data.race}\nEstimated build: ${domains}\n\nDOMAINS\n${domains}\n\nABILITIES\n${statLines}\n\nSKILLS\n${skillLines}\n\nARMOUR\n${armorLines}\n\nPEGGING\n${pegLines}\n\nWEAPON\n  ${weapon.name}\n  d${weapon.diceSides} + ${weapon.scaling} + ${weapon.flatDmg} flat; Pen ${weapon.pen}\n  Weapon skill: ${weapon.skill || "Fencing"}\n\nNOTE\nTXT is human-readable. Use JSON for round-trip import. Race/body-plan is descriptive only in this prototype.\n`;
   downloadTextFile(`${safeName}.txt`, content, "text/plain;charset=utf-8");
 }
 function importCharacterFile(id, input) {
