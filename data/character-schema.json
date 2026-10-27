@@ -220,6 +220,16 @@
         "pen": {
           "type": "integer",
           "minimum": 0
+        },
+        "skill": {
+          "type": "string",
+          "enum": [
+            "Fencing",
+            "Martial Arts",
+            "Archery",
+            "None"
+          ],
+          "description": "Optional attack-skill label; older schema v1 character files without this field remain valid."
         }
       },
       "additionalProperties": false
